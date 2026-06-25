@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+backend/__pycache__/
+backend/*.pyc
+
+# Environment & Secret files
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+id_rsa
+
+# Docker Compose
+docker-compose.yml
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Build outputs
+dist/
+build/
+bin/
+
+# Databases
+backend/*.sqlite3
+*.db
+
+# Terraform state
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# IDEs & System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

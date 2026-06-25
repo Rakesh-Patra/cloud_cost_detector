@@ -1,0 +1,5 @@
+[[rules]]
+id = "generic-password"
+description = "Detect any PASSWORD assignment"
+regex = '''(?i)password\s*=\s*["'][^"']+["']'''
+tags = ["password", "custom"]

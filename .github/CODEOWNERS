@@ -1,0 +1,10 @@
+# CODEOWNERS file for cloud_cost
+
+# Global owners by default (optional, can leave empty if no general owners)
+# * @default-owner
+
+# Sensitive Git configurations owned by security team
+/.github/ @security-team
+
+# Backend code and infrastructure configurations owned by cloud infra team
+/backend/ @cloud-team
