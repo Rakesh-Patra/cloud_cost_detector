@@ -1,5 +1,5 @@
 # ─── Stage 1: Builder ───────────────────────────────────────────────────────
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 
 ARG VITE_BACKEND_URL=http://localhost:8000
 ARG VITE_INSFORGE_PROJECT_URL
