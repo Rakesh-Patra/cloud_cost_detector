@@ -1,0 +1,27 @@
+name: 'Fetch Vault Secrets'
+description: 'Authenticates with HashiCorp Vault via OIDC (JWT) and retrieves secrets'
+inputs:
+  vault-url:
+    description: 'URL of the HashiCorp Vault server'
+    required: true
+  vault-role:
+    description: 'The Vault JWT/OIDC role to authenticate against'
+    required: true
+  vault-namespace:
+    description: 'Vault namespace (optional)'
+    required: false
+    default: ''
+  vault-secrets:
+    description: 'Newline-separated list of Vault secrets to retrieve'
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - name: Fetch Secrets from Vault
+      uses: hashicorp/vault-action@v3
+      with:
+        url: ${{ inputs.vault-url }}
+        role: ${{ inputs.vault-role }}
+        namespace: ${{ inputs.vault-namespace }}
+        method: jwt
+        secrets: ${{ inputs.vault-secrets }}

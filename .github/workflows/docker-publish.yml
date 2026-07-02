@@ -18,6 +18,16 @@ on:
         required: false
         type: string
         default: 'false'
+      vault-url:
+        description: 'URL of the Vault server'
+        required: false
+        type: string
+        default: ''
+      vault-role:
+        description: 'Vault OIDC role'
+        required: false
+        type: string
+        default: ''
     secrets:
       registry-username:
         required: false
@@ -28,19 +38,43 @@ jobs:
   publish:
     name: Publish Docker Images
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Fetch Secrets from Vault
+        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        uses: ./.github/actions/vault-secrets
+        with:
+          vault-url: ${{ inputs.vault-url }}
+          vault-role: ${{ inputs.vault-role }}
+          vault-secrets: |
+            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
+            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY ;
+            secret/data/cloud_cost/docker username | REGISTRY_USERNAME ;
+            secret/data/cloud_cost/docker password | REGISTRY_PASSWORD
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      # If using AWS credentials from Vault/Secrets
+      - name: Configure AWS Credentials (for ECR Login fallback)
+        if: ${{ inputs.ecr-login == 'true' }}
+        uses: ./.github/actions/aws-auth
+        with:
+          aws-region: 'us-east-1'
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
 
       - name: Log in to Docker Registry
         uses: ./.github/actions/docker-login
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ secrets.registry-username }}
-          password: ${{ secrets.registry-password }}
+          username: ${{ env.REGISTRY_USERNAME || secrets.registry-username }}
+          password: ${{ env.REGISTRY_PASSWORD || secrets.registry-password }}
           ecr-login: ${{ inputs.ecr-login }}
 
       - name: Define Image Names

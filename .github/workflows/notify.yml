@@ -12,21 +12,43 @@ on:
         required: false
         type: string
         default: 'Workflow build and deployment'
+      vault-url:
+        description: 'URL of the Vault server'
+        required: false
+        type: string
+        default: ''
+      vault-role:
+        description: 'Vault OIDC role'
+        required: false
+        type: string
+        default: ''
     secrets:
       slack-webhook-url:
-        required: true
+        required: false
 
 jobs:
   notify:
     name: Send Slack Notification
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Fetch Slack Webhook from Vault
+        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        uses: ./.github/actions/vault-secrets
+        with:
+          vault-url: ${{ inputs.vault-url }}
+          vault-role: ${{ inputs.vault-role }}
+          vault-secrets: |
+            secret/data/cloud_cost/ci slack_webhook | SLACK_WEBHOOK_URL
+
       - name: Trigger Slack Notification
         uses: ./.github/actions/slack-notify
         with:
-          slack-webhook-url: ${{ secrets.slack-webhook-url }}
+          slack-webhook-url: ${{ env.SLACK_WEBHOOK_URL || secrets.slack-webhook-url }}
           status: ${{ inputs.status }}
           message: ${{ inputs.message }}

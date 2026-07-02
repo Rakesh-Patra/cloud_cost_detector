@@ -14,6 +14,9 @@ jobs:
   drift-detect:
     name: Drift Detection
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         env_dir: ['terraform/environment/dev', 'terraform/environment/stag', 'terraform/environment/prod']
@@ -21,13 +24,24 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Fetch Secrets from Vault
+        if: ${{ secrets.VAULT_URL != '' && secrets.VAULT_ROLE != '' }}
+        uses: ./.github/actions/vault-secrets
+        with:
+          vault-url: ${{ secrets.VAULT_URL }}
+          vault-role: ${{ secrets.VAULT_ROLE }}
+          vault-secrets: |
+            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
+            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY ;
+            secret/data/cloud_cost/ci slack_webhook | SLACK_WEBHOOK_URL
+
       - name: Configure AWS Credentials
         uses: ./.github/actions/aws-auth
         with:
           aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: 'us-east-1'
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Initialize Terraform
         uses: ./.github/actions/terraform-init
@@ -63,6 +77,6 @@ jobs:
         if: failure() && env.DRIFT_DETECTED == 'true'
         uses: ./.github/actions/slack-notify
         with:
-          slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          slack-webhook-url: ${{ env.SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK_URL }}
           status: 'failure'
           message: 'Drift detected in ${{ matrix.env_dir }}! Infrastructure has deviated from source control.'
