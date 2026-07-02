@@ -290,12 +290,33 @@ Gitleaks inspects codebase patterns for credentials, private keys, and API token
      gitleaks detect --config custom-rules.toml --verbose
      ```
 
-### 4. GitHub Actions workflow
-Pushing to GitHub triggers an automated scan workflow under [`.github/workflows/gitleaks.yml`](file:///c:/ai_log/cloud_cost/.github/workflows/gitleaks.yml) to verify commit histories before merging.
-- Review requirements are assigned under [`.github/CODEOWNERS`](file:///c:/ai_log/cloud_cost/.github/CODEOWNERS):
-  - Updates in `/.github/` require `@security-team`.
-  - Backend changes in `/backend/` require `@cloud-team`.
-- Automated package monitoring is enabled weekly via [`.github/dependabot.yml`](file:///c:/ai_log/cloud_cost/.github/dependabot.yml).
+### 4. Reusable DevSecOps Pipeline & HashiCorp Vault
+Our codebase is guarded by a comprehensive, modular **GitHub Actions DevSecOps Orchestrator Pipeline** ([devsecops-pipeline.yml](file:///.github/workflows/devsecops-pipeline.yml)).
+
+* **CI & Linting** ([ci.yml](file:///.github/workflows/ci.yml)): Validates Python syntax, typechecks React frontend, and runs Oxlint/Ruff checks.
+* **Security Scans**: Runs SAST and dependency analysis concurrently (Gitleaks, Bandit, Checkov, Trivy, Semgrep, and Dependency Review).
+* **Infracost & IaC** ([infracost.yml](file:///.github/workflows/infracost.yml)): Calculates cloud cost differences on Terraform pull requests.
+* **OIDC & HashiCorp Vault** ([vault-secrets/action.yml](file:///.github/actions/vault-secrets/action.yml)): Authenticates securely with Vault using GitHub OpenID Connect (OIDC) JWT tokens, fetching secrets directly into runner environments instead of saving static keys on GitHub.
+* **Automated Rollback & Drift Detection**: Detects configuration drifts on schedule and alerts you on Slack.
+
+---
+
+## 🔐 HashiCorp Vault Local Setup
+
+We configure a local, dev-mode Vault server to secure project secrets and test OIDC connections locally.
+
+1. **Start & Configure Local Vault**:
+   Run the automation script to download the Vault binary, boot it, and configure JWT/OIDC OIDC roles automatically:
+   ```bash
+   python setup_vault.py
+   ```
+2. **Access Vault UI**:
+   - URL: **[http://127.0.0.1:8200/ui](http://127.0.0.1:8200/ui)**
+   - Login: Select **Token** and enter `root`.
+3. **Manually Add Secrets**:
+   Click on the **`secret/`** engine, select **Create secret**, and save keys inside:
+   - **`cloud_cost/ci`**: Store `slack_webhook` (Slack alert URL) and `infracost_key` (Infracost pricing key).
+   - **`cloud_cost/docker`**: Store `username` and `password` for Docker Hub authentication.
 
 ---
 
