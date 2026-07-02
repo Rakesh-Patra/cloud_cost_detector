@@ -4,7 +4,7 @@ inputs:
   node-version:
     description: 'Node.js version'
     required: false
-    default: '20'
+    default: '24'
   working-directory:
     description: 'Location of the frontend folder containing package.json'
     required: false

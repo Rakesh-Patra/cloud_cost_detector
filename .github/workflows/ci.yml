@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node environment
         uses: ./.github/actions/setup-node
         with:
-          node-version: '20'
+          node-version: '24'
           working-directory: './frontend'
 
       - name: Lint Frontend Code
