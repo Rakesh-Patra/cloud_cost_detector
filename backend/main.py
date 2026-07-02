@@ -9,9 +9,11 @@ from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconne
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from vault_config import load_vault_secrets
 
 # Load environment variables at application startup
 load_dotenv()
+load_vault_secrets()
 
 from aws_scanner import (
     list_aws_regions,
