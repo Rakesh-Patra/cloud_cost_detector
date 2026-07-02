@@ -1,0 +1,19 @@
+name: Security - Semgrep Scan
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  semgrep:
+    name: Semgrep Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/security-audit

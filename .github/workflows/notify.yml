@@ -1,0 +1,32 @@
+name: Slack Notification Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      status:
+        description: 'Status of the pipeline (success or failure)'
+        required: true
+        type: string
+      message:
+        description: 'Context summary message for the notification'
+        required: false
+        type: string
+        default: 'Workflow build and deployment'
+    secrets:
+      slack-webhook-url:
+        required: true
+
+jobs:
+  notify:
+    name: Send Slack Notification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Trigger Slack Notification
+        uses: ./.github/actions/slack-notify
+        with:
+          slack-webhook-url: ${{ secrets.slack-webhook-url }}
+          status: ${{ inputs.status }}
+          message: ${{ inputs.message }}

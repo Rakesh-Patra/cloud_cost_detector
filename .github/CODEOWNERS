@@ -1,10 +1,17 @@
 # CODEOWNERS file for cloud_cost
 
-# Global owners by default (optional, can leave empty if no general owners)
-# * @default-owner
+# Global owners by default
+* @default-owner
 
-# Sensitive Git configurations owned by security team
-/.github/ @security-team
+# Sensitive Git configurations and workflows owned by DevSecOps / Security team
+/.github/workflows/ @security-team @devops-team
+/.github/actions/ @security-team @devops-team
 
-# Backend code and infrastructure configurations owned by cloud infra team
-/backend/ @cloud-team
+# Backend code owned by backend team
+/backend/ @backend-team
+
+# Frontend code owned by frontend team
+/frontend/ @frontend-team
+
+# Infrastructure-as-code owned by DevOps/Cloud Infrastructure team
+/terraform/ @devops-team

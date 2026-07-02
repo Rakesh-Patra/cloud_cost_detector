@@ -1,0 +1,46 @@
+name: 'Slack Notification'
+description: 'Sends status alerts to Slack'
+inputs:
+  slack-webhook-url:
+    description: 'Slack webhook URL'
+    required: true
+  status:
+    description: 'Status of the pipeline (success, failure, cancelled)'
+    required: true
+  message:
+    description: 'Custom message to include'
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Post to Slack
+      shell: bash
+      run: |
+        COLOR="#FF0000"
+        EMOJI="❌"
+        if [ "${{ inputs.status }}" = "success" ]; then
+          COLOR="#00FF00"
+          EMOJI="✅"
+        elif [ "${{ inputs.status }}" = "cancelled" ]; then
+          COLOR="#808080"
+          EMOJI="⚠️"
+        fi
+        
+        TEXT="${EMOJI} *Workflow:* ${GITHUB_WORKFLOW}\n*Action:* ${{ inputs.message }}\n*Status:* ${{ inputs.status }}\n*Repo:* ${GITHUB_REPOSITORY}\n*Commit:* ${GITHUB_SHA::7}\n*Run:* <https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}|View Logs>"
+        
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{
+            \"attachments\": [{
+              \"color\": \"${COLOR}\",
+              \"blocks\": [
+                {
+                  \"type\": \"section\",
+                  \"text\": {
+                    \"type\": \"mrkdwn\",
+                    \"text\": \"${TEXT}\"
+                  }
+                }
+              ]
+            }]
+          }" "${{ inputs.slack-webhook-url }}"

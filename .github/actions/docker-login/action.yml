@@ -1,0 +1,33 @@
+name: 'Docker Login'
+description: 'Logs into a specified Docker registry (DockerHub, ECR, or GHCR)'
+inputs:
+  registry:
+    description: 'Docker registry. Can be "ghcr.io", "docker.io", or AWS ECR URL'
+    required: false
+    default: 'ghcr.io'
+  username:
+    description: 'Docker registry username'
+    required: false
+    default: ''
+  password:
+    description: 'Docker registry password'
+    required: false
+    default: ''
+  ecr-login:
+    description: 'Set to "true" to login to AWS ECR using current AWS auth setup'
+    required: false
+    default: 'false'
+runs:
+  using: 'composite'
+  steps:
+    - name: Log in to AWS ECR
+      if: ${{ inputs.ecr-login == 'true' }}
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Log in to standard registry
+      if: ${{ inputs.ecr-login != 'true' }}
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}

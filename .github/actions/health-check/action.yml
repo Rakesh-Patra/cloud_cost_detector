@@ -1,0 +1,49 @@
+name: 'Endpoint Health Check'
+description: 'Validates that a URL is reachable and returning a 200 OK status code'
+inputs:
+  url:
+    description: 'Target URL to check'
+    required: true
+  max-attempts:
+    description: 'Maximum number of retries'
+    required: false
+    default: '5'
+  delay-seconds:
+    description: 'Seconds to wait between retries'
+    required: false
+    default: '10'
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Health Check
+      shell: bash
+      run: |
+        url="${{ inputs.url }}"
+        max_attempts=${{ inputs.max-attempts }}
+        delay_seconds=${{ inputs.delay-seconds }}
+        
+        echo "Starting health check for $url (Max attempts: $max_attempts, delay: $delay_seconds s)"
+        
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+          echo "Attempt $attempt of $max_attempts..."
+          
+          # Run curl and check status code
+          status_code=$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)
+          
+          if [ "$status_code" = "200" ]; then
+            echo "Success! Endpoint $url is healthy (HTTP 200)."
+            exit 0
+          else
+            echo "Endpoint returned status code: $status_code"
+          fi
+          
+          if [ $attempt -lt $max_attempts ]; then
+            echo "Waiting $delay_seconds seconds before next retry..."
+            sleep $delay_seconds
+          fi
+          attempt=$((attempt+1))
+        done
+        
+        echo "Error: Health check failed for $url after $max_attempts attempts."
+        exit 1

@@ -1,0 +1,38 @@
+name: Deploy - Dev
+
+on:
+  workflow_call:
+    inputs:
+      image-tag:
+        description: 'Docker image tag to deploy'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: 'Docker image tag to deploy'
+        required: true
+        default: 'latest'
+
+jobs:
+  deploy-infrastructure:
+    name: Deploy DevOps Infrastructure
+    uses: ./.github/workflows/terraform-apply.yml
+    with:
+      environment-directory: 'terraform/environment/dev'
+      aws-region: 'us-east-1'
+    secrets:
+      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  deploy-app:
+    name: Deploy Dev Application
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy API and Frontend
+        shell: bash
+        run: |
+          echo "Deploying dev environment application with tag: ${{ inputs.image-tag }}"
+          # Trigger deploy to ECS, K8s, or EC2 here
+          echo "Deployment successful."

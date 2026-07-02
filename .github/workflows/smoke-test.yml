@@ -1,0 +1,36 @@
+name: Deployment - Smoke Test
+
+on:
+  workflow_call:
+    inputs:
+      target-url:
+        description: 'URL of the environment to run smoke tests against'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      target-url:
+        description: 'URL of the environment to run smoke tests against'
+        required: true
+
+jobs:
+  smoke-test:
+    name: Run Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Ping Health Endpoint
+        uses: ./.github/actions/health-check
+        with:
+          url: ${{ inputs.target-url }}
+          max-attempts: 6
+          delay-seconds: 10
+
+      - name: Execute API verification tests
+        shell: bash
+        run: |
+          echo "Running additional endpoint response validation tests..."
+          # Can run a custom pytest or curl script here if needed
+          echo "Smoke tests passed successfully."

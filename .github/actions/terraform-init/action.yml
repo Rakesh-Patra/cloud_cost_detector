@@ -1,0 +1,31 @@
+name: 'Terraform Initialize'
+description: 'Installs Terraform and runs initialization for a specific environment'
+inputs:
+  terraform-version:
+    description: 'Terraform version'
+    required: false
+    default: '1.7.0'
+  environment-directory:
+    description: 'The target environment directory (e.g. terraform/environment/dev)'
+    required: true
+  backend-config:
+    description: 'Optional backend config file or options (e.g. backend.tfvars)'
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.environment-directory }}
+      run: |
+        if [ -n "${{ inputs.backend-config }}" ]; then
+          terraform init -backend-config="${{ inputs.backend-config }}"
+        else
+          terraform init
+        fi

@@ -1,0 +1,60 @@
+name: Continuous Integration
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  backend-ci:
+    name: Backend CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python environment
+        uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.11'
+          working-directory: './backend'
+
+      - name: Lint Python Code
+        shell: bash
+        run: |
+          pip install ruff || true
+          if command -v ruff &> /dev/null; then
+            ruff check ./backend
+          else
+            python -m py_compile ./backend/*.py
+          fi
+
+      - name: Run Backend Tests
+        shell: bash
+        run: |
+          # Add actual backend tests here
+          echo "No unit tests defined for python backend yet."
+
+  frontend-ci:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: '20'
+          working-directory: './frontend'
+
+      - name: Lint Frontend Code
+        shell: bash
+        working-directory: ./frontend
+        run: |
+          npm run lint
+
+      - name: Build Frontend Code
+        shell: bash
+        working-directory: ./frontend
+        run: |
+          npm run build

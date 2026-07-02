@@ -1,0 +1,22 @@
+name: Security - Checkov Scan
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  checkov:
+    name: Checkov Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          output_format: cli
+          soft_fail: true

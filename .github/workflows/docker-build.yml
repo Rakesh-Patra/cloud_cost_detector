@@ -1,0 +1,48 @@
+name: Docker - Build
+
+on:
+  workflow_call:
+    inputs:
+      image-tag:
+        description: 'Tag to apply to the images'
+        required: false
+        type: string
+        default: 'latest'
+    outputs:
+      backend-tag:
+        description: 'Backend tag built'
+        value: ${{ inputs.image-tag }}
+      frontend-tag:
+        description: 'Frontend tag built'
+        value: ${{ inputs.image-tag }}
+
+jobs:
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/dockerfile
+          push: false
+          tags: backend:${{ inputs.image-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          tags: frontend:${{ inputs.image-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

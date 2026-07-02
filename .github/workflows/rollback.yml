@@ -1,0 +1,52 @@
+name: Deployment Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment to rollback'
+        required: true
+        type: choice
+        options:
+          - dev
+          - stag
+          - prod
+      target-tag:
+        description: 'Target Docker image tag / Git commit to rollback to'
+        required: true
+
+jobs:
+  rollback:
+    name: Run Rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target-tag }}
+
+      - name: Configure AWS Credentials
+        uses: ./.github/actions/aws-auth
+        with:
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: 'us-east-1'
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Initialize Terraform
+        uses: ./.github/actions/terraform-init
+        with:
+          environment-directory: 'terraform/environment/${{ inputs.environment }}'
+
+      - name: Apply Rollback Configuration
+        shell: bash
+        working-directory: 'terraform/environment/${{ inputs.environment }}'
+        run: |
+          echo "Reverting environment infrastructure to target-tag: ${{ inputs.target-tag }}"
+          terraform apply -auto-approve
+
+      - name: Redeploy Previous App Image
+        shell: bash
+        run: |
+          echo "Rolling back application in ${{ inputs.environment }} to version ${{ inputs.target-tag }}..."
+          # Command to point environment back to previous container image tag

@@ -1,0 +1,38 @@
+name: Infracost
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'terraform/**'
+
+jobs:
+  infracost:
+    name: Infracost Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate Infracost JSON
+        shell: bash
+        run: |
+          infracost breakdown --path=terraform/ --format=json --out-file=/tmp/infracost.json
+          
+      - name: Post Infracost Comment
+        uses: infracost/actions/comment@v3
+        with:
+          path: /tmp/infracost.json
+          behavior: update

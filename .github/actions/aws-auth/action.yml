@@ -1,0 +1,29 @@
+name: 'AWS Authentication'
+description: 'Configure AWS Credentials using IAM Role (OIDC) or fallback Access Keys'
+inputs:
+  aws-role-to-assume:
+    description: 'IAM Role to assume via OIDC'
+    required: false
+    default: ''
+  aws-region:
+    description: 'AWS Region'
+    required: false
+    default: 'us-east-1'
+  aws-access-key-id:
+    description: 'Fallback AWS Access Key ID'
+    required: false
+    default: ''
+  aws-secret-access-key:
+    description: 'Fallback AWS Secret Access Key'
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.aws-role-to-assume }}
+        aws-region: ${{ inputs.aws-region }}
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}

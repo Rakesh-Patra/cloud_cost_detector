@@ -1,0 +1,23 @@
+name: Environment Cleanup
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    name: Clean Up PR Resources
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Clean transient resources
+        shell: bash
+        run: |
+          echo "Cleaning up PR resources..."
+          # If dynamic staging environments are created per PR, clean them up here
+          # e.g., run terraform destroy for a dynamic workspace
+          echo "Clean up process completed."

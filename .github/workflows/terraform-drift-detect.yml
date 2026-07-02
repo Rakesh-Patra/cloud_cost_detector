@@ -1,0 +1,68 @@
+name: Terraform - Drift Detection
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # daily at 4:00 AM UTC
+  workflow_dispatch:
+    inputs:
+      environment-directory:
+        description: 'Environment to scan (e.g. dev, stag, prod)'
+        required: false
+        default: 'dev'
+
+jobs:
+  drift-detect:
+    name: Drift Detection
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env_dir: ['terraform/environment/dev', 'terraform/environment/stag', 'terraform/environment/prod']
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: ./.github/actions/aws-auth
+        with:
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: 'us-east-1'
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Initialize Terraform
+        uses: ./.github/actions/terraform-init
+        with:
+          environment-directory: ${{ matrix.env_dir }}
+
+      - name: Check for Drift
+        id: drift
+        shell: bash
+        working-directory: ${{ matrix.env_dir }}
+        run: |
+          # terraform plan -detailed-exitcode returns:
+          # 0: succeeded, no changes
+          # 1: error
+          # 2: succeeded, changes present (drift!)
+          set +e
+          terraform plan -detailed-exitcode -no-color
+          exit_code=$?
+          set -e
+          
+          if [ $exit_code -eq 2 ]; then
+            echo "DRIFT_DETECTED=true" >> $GITHUB_ENV
+            echo "Drift detected in ${{ matrix.env_dir }}"
+            exit 2
+          elif [ $exit_code -eq 0 ]; then
+            echo "No drift detected."
+          else
+            echo "Error running drift check."
+            exit $exit_code
+          fi
+
+      - name: Notify Slack on Drift / Failure
+        if: failure() && env.DRIFT_DETECTED == 'true'
+        uses: ./.github/actions/slack-notify
+        with:
+          slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          status: 'failure'
+          message: 'Drift detected in ${{ matrix.env_dir }}! Infrastructure has deviated from source control.'

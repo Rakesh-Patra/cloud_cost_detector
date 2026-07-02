@@ -1,0 +1,76 @@
+name: Docker - Publish
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: 'Docker registry. Can be "ghcr.io", "docker.io", etc.'
+        required: false
+        type: string
+        default: 'ghcr.io'
+      image-tag:
+        description: 'Tag to apply to the images'
+        required: false
+        type: string
+        default: 'latest'
+      ecr-login:
+        description: 'Login to ECR'
+        required: false
+        type: string
+        default: 'false'
+    secrets:
+      registry-username:
+        required: false
+      registry-password:
+        required: false
+
+jobs:
+  publish:
+    name: Publish Docker Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Registry
+        uses: ./.github/actions/docker-login
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.registry-username }}
+          password: ${{ secrets.registry-password }}
+          ecr-login: ${{ inputs.ecr-login }}
+
+      - name: Define Image Names
+        shell: bash
+        run: |
+          # Lowercase the github repository to avoid docker tag issues
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "BACKEND_IMAGE=${{ inputs.registry }}/${REPO_LOWER}/backend" >> $GITHUB_ENV
+          echo "FRONTEND_IMAGE=${{ inputs.registry }}/${REPO_LOWER}/frontend" >> $GITHUB_ENV
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/dockerfile
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ inputs.image-tag }}
+            ${{ env.BACKEND_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ inputs.image-tag }}
+            ${{ env.FRONTEND_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

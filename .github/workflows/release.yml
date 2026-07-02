@@ -1,0 +1,67 @@
+name: Release Management
+
+on:
+  workflow_call:
+    inputs:
+      version-bump:
+        description: 'Type of release bump (patch, minor, major)'
+        required: false
+        type: string
+        default: 'patch'
+  workflow_dispatch:
+    inputs:
+      version-bump:
+        description: 'Type of release bump'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: 'patch'
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create Git Tag and GitHub Release
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Generate a simple timestamp-based tag or bump version
+            const date = new Date().toISOString().slice(0,10).replace(/-/g,".");
+            const runNumber = context.runNumber;
+            const tagName = `v${date}-${runNumber}`;
+            
+            console.log(`Creating release tag: ${tagName}`);
+            
+            // Create reference tag
+            try {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${tagName}`,
+                sha: context.sha
+              });
+              
+              // Create Release
+              await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tagName,
+                name: `Release ${tagName}`,
+                body: `Automated release created from pipeline run: ${context.runId}`,
+                draft: false,
+                prerelease: false
+              });
+              console.log("Release created successfully.");
+            } catch (error) {
+              console.error(`Failed to create release: ${error.message}`);
+            }
