@@ -132,81 +132,9 @@ def setup():
     except Exception as e:
         print(f"Failed to create Vault policy: {e}")
 
-    # Read backend .env and populate Vault secrets
-    env_path = os.path.join(os.getcwd(), "backend", ".env")
-    env_secrets = {}
-    if os.path.exists(env_path):
-        with open(env_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    parts = line.split("=", 1)
-                    if len(parts) == 2:
-                        k, v = parts
-                        env_secrets[k.strip().lower()] = v.strip()
-    
-    # Write CI secrets to secret/data/cloud_cost/ci
-    ci_secrets_url = f"{VAULT_ADDR}/v1/secret/data/cloud_cost/ci"
-    ci_payload = {
-        "data": {
-            "gemini_api_key": env_secrets.get("gemini_api_key", ""),
-            "insforge_anon_key": env_secrets.get("insforge_anon_key", ""),
-            "insforge_project_url": env_secrets.get("insforge_project_url", ""),
-            "slack_webhook": "https://hooks.slack.com/services/dummy_webhook_url",
-            "infracost_key": "ico-dummy_infracost_key_value"
-        }
-    }
-    req = urllib.request.Request(ci_secrets_url, data=json.dumps(ci_payload).encode('utf-8'), method="POST")
-    req.add_header("X-Vault-Token", VAULT_TOKEN)
-    req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req) as response:
-            print("CI secrets written to Vault: secret/data/cloud_cost/ci")
-    except Exception as e:
-        print(f"Failed to write CI secrets: {e}")
-
-    # Write AWS secrets to secret/data/cloud_cost/aws
-    aws_secrets_url = f"{VAULT_ADDR}/v1/secret/data/cloud_cost/aws"
-    aws_payload = {
-        "data": {
-            "access_key": os.getenv("AWS_ACCESS_KEY_ID", "mock_access_key"),
-            "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY", "mock_secret_key")
-        }
-    }
-    req = urllib.request.Request(aws_secrets_url, data=json.dumps(aws_payload).encode('utf-8'), method="POST")
-    req.add_header("X-Vault-Token", VAULT_TOKEN)
-    req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req) as response:
-            print("AWS secrets written to Vault: secret/data/cloud_cost/aws")
-    except Exception as e:
-        print(f"Failed to write AWS secrets: {e}")
-
-    # 4. Write local env variables configuration for local backend running
-    backend_env_path = os.path.join(os.getcwd(), "backend", ".env")
-    env_lines = []
-    if os.path.exists(backend_env_path):
-        with open(backend_env_path, "r") as f:
-            env_lines = f.readlines()
-
-    # Append Vault variables if not present
-    vault_vars = [
-        "\n# HashiCorp Vault local configuration\n",
-        "VAULT_ADDR=http://127.0.0.1:8200\n",
-        "VAULT_TOKEN=root\n",
-        "VAULT_ROLE=github-actions-role\n"
-    ]
-    
-    has_vault = any("VAULT_ADDR" in line for line in env_lines)
-    if not has_vault:
-        with open(backend_env_path, "a") as f:
-            f.writelines(vault_vars)
-        print("Vault configuration added to backend/.env file.")
-    else:
-        print("Vault configuration already exists in backend/.env file.")
-
     print("\nVault setup complete! Vault is running locally at http://127.0.0.1:8200 with token 'root'.")
     print("OIDC authentication role 'github-actions-role' has been configured.")
+    print("Vault UI is accessible at http://127.0.0.1:8200/ui using Token method (token: 'root').")
 
 if __name__ == "__main__":
     setup()
