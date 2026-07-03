@@ -45,11 +45,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch AWS Secrets from Vault
-        if: ${{ inputs['vault-url'] != '' && inputs['vault-role'] != '' }}
+        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs['vault-url'] }}
-          vault-role: ${{ inputs['vault-role'] }}
+          vault-url: ${{ inputs.vault-url }}
+          vault-role: ${{ inputs.vault-role }}
           vault-secrets: |
             secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
             secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY
@@ -57,27 +57,27 @@ jobs:
       - name: Configure AWS Credentials
         uses: ./.github/actions/aws-auth
         with:
-          aws-role-to-assume: ${{ inputs['aws-role-to-assume'] }}
-          aws-region: ${{ inputs['aws-region'] }}
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets['aws-access-key-id'] }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets['aws-secret-access-key'] }}
+          aws-role-to-assume: ${{ inputs.aws-role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets.aws-secret-access-key }}
 
       - name: Initialize Terraform
         uses: ./.github/actions/terraform-init
         with:
-          environment-directory: ${{ inputs['environment-directory'] }}
+          environment-directory: ${{ inputs.environment-directory }}
 
       - name: Terraform Plan
         id: plan
         shell: bash
-        working-directory: ${{ inputs['environment-directory'] }}
+        working-directory: ${{ inputs.environment-directory }}
         run: |
           terraform plan -no-color -out=tfplan
           
       - name: Format Plan Output
         id: format
         shell: bash
-        working-directory: ${{ inputs['environment-directory'] }}
+        working-directory: ${{ inputs.environment-directory }}
         run: |
           # Store the plan output for viewing in logs
           terraform show -no-color tfplan | head -n 200

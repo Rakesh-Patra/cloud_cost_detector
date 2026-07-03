@@ -46,11 +46,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch Secrets from Vault
-        if: ${{ inputs['vault-url'] != '' && inputs['vault-role'] != '' }}
+        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs['vault-url'] }}
-          vault-role: ${{ inputs['vault-role'] }}
+          vault-url: ${{ inputs.vault-url }}
+          vault-role: ${{ inputs.vault-role }}
           vault-secrets: |
             secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
             secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY ;
@@ -62,7 +62,7 @@ jobs:
 
       # If using AWS credentials from Vault/Secrets
       - name: Configure AWS Credentials (for ECR Login fallback)
-        if: ${{ inputs['ecr-login'] == 'true' }}
+        if: ${{ inputs.ecr-login == 'true' }}
         uses: ./.github/actions/aws-auth
         with:
           aws-region: 'us-east-1'
@@ -73,9 +73,9 @@ jobs:
         uses: ./.github/actions/docker-login
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ env.REGISTRY_USERNAME || secrets['registry-username'] }}
-          password: ${{ env.REGISTRY_PASSWORD || secrets['registry-password'] }}
-          ecr-login: ${{ inputs['ecr-login'] }}
+          username: ${{ env.REGISTRY_USERNAME || secrets.registry-username }}
+          password: ${{ env.REGISTRY_PASSWORD || secrets.registry-password }}
+          ecr-login: ${{ inputs.ecr-login }}
 
       - name: Define Image Names
         shell: bash
@@ -92,7 +92,7 @@ jobs:
           file: ./backend/dockerfile
           push: true
           tags: |
-            ${{ env.BACKEND_IMAGE }}:${{ inputs['image-tag'] }}
+            ${{ env.BACKEND_IMAGE }}:${{ inputs.image-tag }}
             ${{ env.BACKEND_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -104,7 +104,7 @@ jobs:
           file: ./frontend/Dockerfile
           push: true
           tags: |
-            ${{ env.FRONTEND_IMAGE }}:${{ inputs['image-tag'] }}
+            ${{ env.FRONTEND_IMAGE }}:${{ inputs.image-tag }}
             ${{ env.FRONTEND_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
