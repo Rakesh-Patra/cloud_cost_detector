@@ -50,8 +50,8 @@ jobs:
       vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
       vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
     secrets:
-      aws-access-key-id: ${{ secrets.aws-access-key-id || secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.aws-secret-access-key || secrets.AWS_SECRET_ACCESS_KEY }}
+      aws-access-key-id: ${{ secrets['aws-access-key-id'] || secrets.AWS_ACCESS_KEY_ID }}
+      aws-secret-access-key: ${{ secrets['aws-secret-access-key'] || secrets.AWS_SECRET_ACCESS_KEY }}
 
   get-ec2-ip:
     name: Get EC2 Public IP

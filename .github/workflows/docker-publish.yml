@@ -73,8 +73,8 @@ jobs:
         uses: ./.github/actions/docker-login
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ env.REGISTRY_USERNAME || secrets.registry-username }}
-          password: ${{ env.REGISTRY_PASSWORD || secrets.registry-password }}
+          username: ${{ env.REGISTRY_USERNAME || secrets['registry-username'] }}
+          password: ${{ env.REGISTRY_PASSWORD || secrets['registry-password'] }}
           ecr-login: ${{ inputs.ecr-login }}
 
       - name: Define Image Names
