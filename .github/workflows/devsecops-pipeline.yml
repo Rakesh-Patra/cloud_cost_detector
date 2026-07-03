@@ -18,6 +18,12 @@ on:
         type: string
         default: ''
 
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+  pull-requests: write
+
 jobs:
   # 1. CI Phase
   ci:
@@ -59,6 +65,6 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
       registry: 'ghcr.io'
-      vault-url: ${{ vars.VAULT_URL }}
-      vault-role: ${{ vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets: inherit
