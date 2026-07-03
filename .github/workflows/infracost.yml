@@ -56,7 +56,10 @@ jobs:
           infracost breakdown --path=terraform/ --format=json --out-file=/tmp/infracost.json
           
       - name: Post Infracost Comment
-        uses: infracost/actions/comment@v3
-        with:
-          path: /tmp/infracost.json
-          behavior: update
+        shell: bash
+        run: |
+          infracost comment github --path=/tmp/infracost.json \
+                                   --repo=$GITHUB_REPOSITORY \
+                                   --github-token=${{ github.token }} \
+                                   --pull-request=${{ github.event.pull_request.number }} \
+                                   --behavior=update
