@@ -25,7 +25,7 @@ jobs:
       - name: Ping Frontend Health
         uses: ./.github/actions/health-check
         with:
-          url: ${{ inputs.target-url }}
+          url: "${{ inputs.target-url }}:5173"
           max-attempts: 6
           delay-seconds: 10
 

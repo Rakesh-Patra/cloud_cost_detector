@@ -134,7 +134,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/smoke-test.yml
     with:
-      target-url: 'https://dev.cloudcost.internal'
+      target-url: 'http://${{ needs.deploy-dev.outputs.public_ip }}'
 
   smoke-test-staging:
     name: Smoke Test Staging
@@ -142,7 +142,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/smoke-test.yml
     with:
-      target-url: 'https://staging.cloudcost.internal'
+      target-url: 'http://${{ needs.deploy-staging.outputs.public_ip }}'
 
   smoke-test-prod:
     name: Smoke Test Production
@@ -150,7 +150,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/smoke-test.yml
     with:
-      target-url: 'https://cloudcost.internal'
+      target-url: 'http://${{ needs.deploy-production.outputs.public_ip }}'
 
   # 9. Pipeline Slack notification
   notify-status:
