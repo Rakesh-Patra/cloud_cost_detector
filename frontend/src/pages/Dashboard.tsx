@@ -24,7 +24,7 @@ export default function Dashboard() {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     };
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
     const response = await fetch(`${backendUrl}${endpoint}`, {
       ...options,
       headers,

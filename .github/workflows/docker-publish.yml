@@ -72,7 +72,9 @@ jobs:
           vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/docker username | REGISTRY_USERNAME ;
-            secret/data/cloud_cost/docker password | REGISTRY_PASSWORD
+            secret/data/cloud_cost/docker password | REGISTRY_PASSWORD ;
+            secret/data/cloud_cost/app insforge_project_url | INSFORGE_PROJECT_URL ;
+            secret/data/cloud_cost/app insforge_anon_key | INSFORGE_ANON_KEY
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -124,5 +126,9 @@ jobs:
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ inputs.image-tag }}
             ${{ env.FRONTEND_IMAGE }}:latest
+          build-args: |
+            VITE_BACKEND_URL=
+            VITE_INSFORGE_PROJECT_URL=${{ env.INSFORGE_PROJECT_URL || 'https://scf29qqy.us-east.insforge.app' }}
+            VITE_INSFORGE_ANON_KEY=${{ env.INSFORGE_ANON_KEY || 'ik_fc877384331b6eaae45d762900f67d0c' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
