@@ -37,3 +37,7 @@ backend/*.sqlite3
 .DS_Store
 Thumbs.db
 *.log
+
+# Ansible
+*.retry
+ansible/inventory/*.dynamic.yml

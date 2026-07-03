@@ -1,0 +1,47 @@
+---
+# ─── Deploy Playbook ─────────────────────────────────────────────────────────
+# Deploys the Cloud Cost Detector application to EC2 instances
+#
+# Usage (from CI):
+#   ansible-playbook ansible/playbooks/deploy.yml \
+#     -i "<ec2_public_ip>," \
+#     -u ubuntu \
+#     --private-key /tmp/ssh_key.pem \
+#     -e "image_tag=abc123 docker_repo=rakesh-patra/cloud_cost_detector ..."
+
+- name: Deploy Cloud Cost Detector
+  hosts: all
+  gather_facts: true
+  become: false
+
+  pre_tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - docker_repo | length > 0
+          - image_tag | length > 0
+        fail_msg: "Required variables 'docker_repo' and 'image_tag' must be set"
+
+    - name: Display deployment information
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════
+          Deploying Cloud Cost Detector
+          ───────────────────────────────────────────────────
+          Target Host : {{ inventory_hostname }}
+          Image Tag   : {{ image_tag }}
+          Registry    : {{ docker_registry }}/{{ docker_repo }}
+          Backend     : port {{ backend_port }}
+          Frontend    : port {{ frontend_port }}
+          ═══════════════════════════════════════════════════
+
+  roles:
+    - role: app_deploy
+
+  post_tasks:
+    - name: Display deployment result
+      ansible.builtin.debug:
+        msg: |
+          ✅ Deployment successful!
+          Backend  → http://{{ inventory_hostname }}:{{ backend_port }}/docs
+          Frontend → http://{{ inventory_hostname }}:{{ frontend_port }}

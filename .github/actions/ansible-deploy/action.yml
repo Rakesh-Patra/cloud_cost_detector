@@ -1,0 +1,83 @@
+name: 'Ansible Deploy'
+description: 'Deploys application to EC2 via Ansible using SSH key from Vault'
+inputs:
+  ec2-host:
+    description: 'EC2 public IP or DNS to deploy to'
+    required: true
+  ssh-private-key:
+    description: 'SSH private key content for EC2 access'
+    required: true
+  image-tag:
+    description: 'Docker image tag to deploy'
+    required: true
+  docker-repo:
+    description: 'Docker repository (e.g., rakesh-patra/cloud_cost_detector)'
+    required: true
+  ghcr-username:
+    description: 'GHCR username for pulling images'
+    required: false
+    default: ''
+  ghcr-token:
+    description: 'GHCR token for pulling images'
+    required: false
+    default: ''
+  gemini-api-key:
+    description: 'Gemini API key for the backend'
+    required: false
+    default: ''
+  insforge-project-url:
+    description: 'InsForge project URL'
+    required: false
+    default: ''
+  insforge-anon-key:
+    description: 'InsForge anonymous key'
+    required: false
+    default: ''
+  playbook:
+    description: 'Ansible playbook to run (deploy or rollback)'
+    required: false
+    default: 'deploy'
+  ssh-user:
+    description: 'SSH user on EC2'
+    required: false
+    default: 'ubuntu'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Ansible
+      shell: bash
+      run: |
+        pip install ansible-core --quiet
+
+    - name: Write SSH private key
+      shell: bash
+      run: |
+        mkdir -p /tmp/.ansible_ssh
+        echo "${{ inputs.ssh-private-key }}" > /tmp/.ansible_ssh/deploy_key.pem
+        chmod 600 /tmp/.ansible_ssh/deploy_key.pem
+
+    - name: Run Ansible Playbook
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        ANSIBLE_CONFIG: ansible/ansible.cfg
+        ANSIBLE_HOST_KEY_CHECKING: 'False'
+      run: |
+        ansible-playbook ansible/playbooks/${{ inputs.playbook }}.yml \
+          -i "${{ inputs.ec2-host }}," \
+          -u "${{ inputs.ssh-user }}" \
+          --private-key /tmp/.ansible_ssh/deploy_key.pem \
+          -e "image_tag=${{ inputs.image-tag }}" \
+          -e "docker_repo=${{ inputs.docker-repo }}" \
+          -e "ghcr_username=${{ inputs.ghcr-username }}" \
+          -e "ghcr_token=${{ inputs.ghcr-token }}" \
+          -e "gemini_api_key=${{ inputs.gemini-api-key }}" \
+          -e "insforge_project_url=${{ inputs.insforge-project-url }}" \
+          -e "insforge_anon_key=${{ inputs.insforge-anon-key }}"
+
+    - name: Clean up SSH key
+      shell: bash
+      if: always()
+      run: |
+        rm -rf /tmp/.ansible_ssh

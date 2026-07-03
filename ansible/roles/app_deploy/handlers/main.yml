@@ -1,0 +1,7 @@
+---
+# ─── Handlers ────────────────────────────────────────────────────────────────
+
+- name: restart application
+  ansible.builtin.shell: |
+    docker compose -p {{ compose_project }} -f {{ app_dir }}/docker-compose.yml up -d --remove-orphans --force-recreate
+  listen: "restart application"
