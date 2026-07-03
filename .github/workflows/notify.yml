@@ -38,11 +38,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch Slack Webhook from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        if: ${{ inputs['vault-url'] != '' && inputs['vault-role'] != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role }}
+          vault-url: ${{ inputs['vault-url'] }}
+          vault-role: ${{ inputs['vault-role'] }}
           vault-secrets: |
             secret/data/cloud_cost/ci slack_webhook | SLACK_WEBHOOK_URL
 

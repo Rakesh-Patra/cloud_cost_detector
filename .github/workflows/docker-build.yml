@@ -11,10 +11,10 @@ on:
     outputs:
       backend-tag:
         description: 'Backend tag built'
-        value: ${{ inputs.image-tag }}
+        value: ${{ inputs['image-tag'] }}
       frontend-tag:
         description: 'Frontend tag built'
-        value: ${{ inputs.image-tag }}
+        value: ${{ inputs['image-tag'] }}
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
           context: ./backend
           file: ./backend/dockerfile
           push: false
-          tags: backend:${{ inputs.image-tag }}
+          tags: backend:${{ inputs['image-tag'] }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -43,6 +43,6 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: false
-          tags: frontend:${{ inputs.image-tag }}
+          tags: frontend:${{ inputs['image-tag'] }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

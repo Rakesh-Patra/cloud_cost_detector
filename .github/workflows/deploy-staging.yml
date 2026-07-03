@@ -44,8 +44,8 @@ jobs:
     with:
       environment-directory: 'terraform/environment/stag'
       aws-region: 'us-east-1'
-      vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
-      vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
+      vault-url: ${{ inputs['vault-url'] || github.event.inputs['vault-url'] }}
+      vault-role: ${{ inputs['vault-role'] || github.event.inputs['vault-role'] }}
     secrets:
       aws-access-key-id: ${{ secrets['aws-access-key-id'] || secrets.AWS_ACCESS_KEY_ID }}
       aws-secret-access-key: ${{ secrets['aws-secret-access-key'] || secrets.AWS_SECRET_ACCESS_KEY }}
@@ -64,11 +64,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch AWS Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        if: ${{ inputs['vault-url'] != '' && inputs['vault-role'] != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
+          vault-url: ${{ inputs['vault-url'] || github.event.inputs['vault-url'] }}
+          vault-role: ${{ inputs['vault-role'] || github.event.inputs['vault-role'] }}
           vault-secrets: |
             secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
             secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY
@@ -108,11 +108,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        if: ${{ inputs['vault-url'] != '' && inputs['vault-role'] != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
+          vault-url: ${{ inputs['vault-url'] || github.event.inputs['vault-url'] }}
+          vault-role: ${{ inputs['vault-role'] || github.event.inputs['vault-role'] }}
           vault-secrets: |
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY ;
             secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;
@@ -124,7 +124,7 @@ jobs:
         with:
           ec2-host: ${{ needs.get-ec2-ip.outputs.ec2_ip }}
           ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
-          image-tag: ${{ inputs.image-tag || github.event.inputs.image-tag }}
+          image-tag: ${{ inputs['image-tag'] || github.event.inputs['image-tag'] }}
           docker-repo: ${{ github.repository }}
           ghcr-username: ${{ github.actor }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
