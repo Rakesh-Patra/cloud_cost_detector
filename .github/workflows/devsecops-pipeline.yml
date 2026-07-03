@@ -2,9 +2,9 @@ name: DevSecOps Orchestrator Pipeline
 
 on:
   push:
-    branches: [ main, develop, test-workflow ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop, test-workflow ]
+    branches: [ main, develop ]
   workflow_dispatch:
     inputs:
       vault-url:
@@ -30,7 +30,7 @@ jobs:
     name: Run CI
     uses: ./.github/workflows/ci.yml
 
-  # 2. Security Scans Phase
+  # 2. Security Scans Phase (Run concurrently with CI)
   security-gitleaks:
     name: Run Gitleaks Scan
     uses: ./.github/workflows/security-gitleaks.yml
@@ -56,7 +56,29 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/security-dependency-review.yml
 
-  # 3. Docker Build
+  # 3. Cost & Infrastructure Verification (on Pull Requests)
+  infracost:
+    name: Run Infracost
+    needs: [ci, security-checkov]
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/infracost.yml
+    with:
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
+    secrets: inherit
+
+  terraform-plan-dev:
+    name: Terraform Plan Dev
+    needs: [ci, security-checkov]
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/terraform-plan.yml
+    with:
+      environment-directory: 'terraform/environment/dev'
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
+    secrets: inherit
+
+  # 4. Build & Publish (only on push/merges to main or develop)
   docker-build:
     name: Build Docker Images
     needs: [ci, security-gitleaks, security-trivy, security-bandit, security-semgrep]
@@ -65,6 +87,80 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
       registry: 'ghcr.io'
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
+    secrets: inherit
+
+  # 5. Deploy to Dev (when push is on develop branch)
+  deploy-dev:
+    name: Deploy to Dev
+    needs: docker-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    uses: ./.github/workflows/deploy-dev.yml
+    with:
+      image-tag: ${{ github.sha }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
+    secrets: inherit
+
+  # 6. Deploy to Staging (run after dev deployment)
+  deploy-staging:
+    name: Deploy to Staging
+    needs: deploy-dev
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    uses: ./.github/workflows/deploy-staging.yml
+    with:
+      image-tag: ${{ github.sha }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
+    secrets: inherit
+
+  # 7. Deploy to Production (when push is on main branch)
+  deploy-production:
+    name: Deploy to Production
+    needs: docker-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy-prod.yml
+    with:
+      image-tag: ${{ github.sha }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
+    secrets: inherit
+
+  # 8. Smoke Testing
+  smoke-test-dev:
+    name: Smoke Test Dev
+    needs: deploy-dev
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      target-url: 'https://dev.cloudcost.internal'
+
+  smoke-test-staging:
+    name: Smoke Test Staging
+    needs: deploy-staging
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      target-url: 'https://staging.cloudcost.internal'
+
+  smoke-test-prod:
+    name: Smoke Test Production
+    needs: deploy-production
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      target-url: 'https://cloudcost.internal'
+
+  # 9. Pipeline Slack notification
+  notify-status:
+    name: Pipeline Notifications
+    needs: [ci, docker-build, deploy-production, smoke-test-prod]
+    if: always()
+    uses: ./.github/workflows/notify.yml
+    with:
+      status: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+      message: 'DevSecOps orchestrator pipeline execution status check.'
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets: inherit
