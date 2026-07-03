@@ -91,8 +91,8 @@ jobs:
         uses: ./.github/actions/docker-login
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ env.REGISTRY_USERNAME || inputs.registry-username || github.actor }}
-          password: ${{ env.REGISTRY_PASSWORD || secrets['registry_password'] || github.token }}
+          username: ${{ inputs.registry == 'ghcr.io' && github.actor || env.REGISTRY_USERNAME || inputs.registry-username || github.actor }}
+          password: ${{ inputs.registry == 'ghcr.io' && github.token || env.REGISTRY_PASSWORD || secrets['registry_password'] || github.token }}
           ecr-login: ${{ inputs.ecr-login }}
 
       - name: Define Image Names
