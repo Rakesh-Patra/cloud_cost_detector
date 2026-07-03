@@ -1,4 +1,6 @@
 resource "aws_security_group" "ec2" {
+  # checkov:skip=CKV_AWS_24:Allow SSH from internet for dynamic GitHub Actions runner IPs
+  # checkov:skip=CKV_AWS_260:Allow ingress from internet for testing public services
   name        = "${var.project_name}-${var.environment}-sg"
   description = "Security group for ${var.project_name} in ${var.environment}"
 
@@ -63,6 +65,8 @@ resource "aws_key_pair" "app" {
 }
 
 resource "aws_instance" "app" {
+  # checkov:skip=CKV_AWS_88:Public IP is required for GitHub Actions runner deployment and public testing
+  # checkov:skip=CKV_AWS_135:EBS optimized is not required for dev/staging workloads
   ami                    = var.ami
   instance_type          = var.instance_type
   key_name               = aws_key_pair.app.key_name
