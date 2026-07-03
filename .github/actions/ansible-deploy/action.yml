@@ -63,6 +63,7 @@ runs:
       env:
         ANSIBLE_CONFIG: ansible/ansible.cfg
         ANSIBLE_HOST_KEY_CHECKING: 'False'
+        ANSIBLE_STDOUT_CALLBACK: 'default'
       run: |
         ansible-playbook ansible/playbooks/${{ inputs.playbook }}.yml \
           -i "${{ inputs.ec2-host }}," \
