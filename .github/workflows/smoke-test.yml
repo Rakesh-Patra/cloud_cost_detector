@@ -12,6 +12,7 @@ on:
       target-url:
         description: 'URL of the environment to run smoke tests against'
         required: true
+        type: string
 
 jobs:
   smoke-test:
