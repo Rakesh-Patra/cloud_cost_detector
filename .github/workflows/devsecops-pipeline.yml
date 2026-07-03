@@ -163,7 +163,7 @@ jobs:
     if: always()
     uses: ./.github/workflows/notify.yml
     with:
-      status: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+      status: 'failure'
       message: 'DevSecOps orchestrator pipeline execution status check.'
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
