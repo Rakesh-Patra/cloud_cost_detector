@@ -2,6 +2,7 @@ import os
 import logging
 import uuid
 import asyncio
+import json
 from datetime import datetime
 from typing import Dict, List, Literal
 import httpx
@@ -9,10 +10,6 @@ from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconne
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-
-# Load environment variables at application startup
-load_dotenv()
-
 from aws_scanner import (
     list_aws_regions,
     scan_all_resources,
@@ -22,11 +19,13 @@ from aws_scanner import (
     AWSRateLimitException,
     AWSScanException
 )
-import json
 from ai_analyzer import analyze_costs, generate_chat_response, GeminiAPIException
 from insforge_client import InsForgeClient, InsForgeException
 import database
 import anomaly_detector
+
+# Load environment variables at application startup
+load_dotenv()
 
 db_client = InsForgeClient()
 

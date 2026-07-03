@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import random  # nosec B411
 import httpx
 import boto3
-from botocore.exceptions import ClientError
+
 
 logger = logging.getLogger("anomaly_detector")
 
