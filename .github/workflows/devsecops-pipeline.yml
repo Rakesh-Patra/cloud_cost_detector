@@ -59,8 +59,7 @@ jobs:
     with:
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
-    secrets:
-      INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
+    secrets: inherit
 
   terraform-plan-dev:
     name: Terraform Plan Dev
@@ -71,9 +70,7 @@ jobs:
       environment-directory: 'terraform/environment/dev'
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
-    secrets:
-      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    secrets: inherit
 
   # 4. Build & Publish (only on push/merges to main or develop)
   docker-build:
@@ -86,56 +83,49 @@ jobs:
       registry: 'ghcr.io'
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
-    secrets:
-      registry_password: ${{ secrets.GITHUB_TOKEN }}
+    secrets: inherit
 
   # 5. Deploy to Dev (when push is on develop branch)
   deploy-dev:
     name: Deploy to Dev
     needs: docker-build
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/deploy-dev.yml
     with:
       image-tag: ${{ github.sha }}
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
-    secrets:
-      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    secrets: inherit
 
   # 6. Deploy to Staging (when push is on develop branch, run after dev deployment)
   deploy-staging:
     name: Deploy to Staging
     needs: deploy-dev
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/deploy-staging.yml
     with:
       image-tag: ${{ github.sha }}
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
-    secrets:
-      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    secrets: inherit
 
   # 7. Deploy to Production (when push is on main branch)
   deploy-production:
     name: Deploy to Production
     needs: docker-build
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-prod.yml
     with:
       image-tag: ${{ github.sha }}
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
-    secrets:
-      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    secrets: inherit
 
   # 8. Smoke Testing
   smoke-test-dev:
     name: Smoke Test Dev
     needs: deploy-dev
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/smoke-test.yml
     with:
       target-url: 'https://dev.cloudcost.internal'
@@ -143,7 +133,7 @@ jobs:
   smoke-test-staging:
     name: Smoke Test Staging
     needs: deploy-staging
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/smoke-test.yml
     with:
       target-url: 'https://staging.cloudcost.internal'
@@ -151,7 +141,7 @@ jobs:
   smoke-test-prod:
     name: Smoke Test Production
     needs: deploy-production
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/smoke-test.yml
     with:
       target-url: 'https://cloudcost.internal'
@@ -163,9 +153,8 @@ jobs:
     if: always()
     uses: ./.github/workflows/notify.yml
     with:
-      status: 'failure'
+      status: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
       message: 'DevSecOps orchestrator pipeline execution status check.'
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
-    secrets:
-      slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+    secrets: inherit

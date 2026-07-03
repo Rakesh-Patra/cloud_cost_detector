@@ -49,6 +49,6 @@ jobs:
       - name: Trigger Slack Notification
         uses: ./.github/actions/slack-notify
         with:
-          slack_webhook_url: ${{ env.SLACK_WEBHOOK_URL || secrets['slack_webhook_url'] }}
+          slack-webhook-url: ${{ env.SLACK_WEBHOOK_URL || secrets['slack_webhook_url'] }}
           status: ${{ inputs.status }}
           message: ${{ inputs.message }}
