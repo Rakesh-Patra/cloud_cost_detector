@@ -1,0 +1,7 @@
+# Ignore local development and setup scripts that are not part of the production application
+setup_vault.py
+
+# Ignore any binary or node_modules
+bin/
+node_modules/
+__pycache__/
