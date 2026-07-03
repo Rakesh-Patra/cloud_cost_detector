@@ -37,11 +37,11 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch Infracost Secret from Vault
-        if: ${{ inputs['vault-url'] != '' && inputs['vault-role'] != '' }}
+        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs['vault-url'] }}
-          vault-role: ${{ inputs['vault-role'] }}
+          vault-url: ${{ inputs.vault-url }}
+          vault-role: ${{ inputs.vault-role }}
           vault-secrets: |
             secret/data/cloud_cost/ci infracost_key | INFRACOST_API_KEY
 
@@ -58,8 +58,9 @@ jobs:
       - name: Post Infracost Comment
         shell: bash
         run: |
+          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
           infracost comment github --path=/tmp/infracost.json \
                                    --repo=$GITHUB_REPOSITORY \
                                    --github-token=${{ github.token }} \
-                                   --pull-request=${{ github.event.pull_request.number }} \
+                                   --pull-request=$PR_NUMBER \
                                    --behavior=update
