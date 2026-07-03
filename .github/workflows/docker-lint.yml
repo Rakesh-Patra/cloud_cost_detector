@@ -1,0 +1,119 @@
+name: Docker Lint
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - '**/Dockerfile'
+      - '**/dockerfile'
+      - '**/.dockerignore'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker-lint.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - '**/Dockerfile'
+      - '**/dockerfile'
+      - '**/.dockerignore'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker-lint.yml'
+  workflow_dispatch:
+
+jobs:
+  hadolint:
+    name: Hadolint - Dockerfile Linting
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile:
+          - { path: 'backend/dockerfile', name: 'Backend' }
+          - { path: 'frontend/Dockerfile', name: 'Frontend' }
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint on ${{ matrix.dockerfile.name }}
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.dockerfile.path }}
+          failure-threshold: warning
+          ignore: DL3008,DL3013,DL3018
+          # DL3008 - Pin versions in apt-get install
+          # DL3013 - Pin versions in pip install
+          # DL3018 - Pin versions in apk add
+
+      - name: Upload Hadolint Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hadolint-${{ matrix.dockerfile.name }}
+          path: hadolint_output.*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docker-compose-lint:
+    name: Docker Compose Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          echo "✅ docker-compose.yml is valid"
+
+  dockerignore-check:
+    name: Dockerignore Best Practices
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Check .dockerignore files exist
+        run: |
+          echo "## Dockerignore Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for dir in backend frontend; do
+            if [ -f "$dir/.dockerignore" ]; then
+              echo "✅ $dir/.dockerignore exists" >> $GITHUB_STEP_SUMMARY
+              lines=$(wc -l < "$dir/.dockerignore")
+              echo "   - $lines rules defined" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️  $dir/.dockerignore is MISSING" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Verify common ignores
+        run: |
+          for dir in backend frontend; do
+            if [ -f "$dir/.dockerignore" ]; then
+              echo "--- $dir/.dockerignore ---"
+              for pattern in ".git" "node_modules" "__pycache__" ".env"; do
+                if grep -q "$pattern" "$dir/.dockerignore"; then
+                  echo "  ✅ Ignores $pattern"
+                else
+                  echo "  ⚠️  Missing ignore for $pattern"
+                fi
+              done
+            fi
+          done
+
+  summary:
+    name: Docker Lint Summary
+    needs: [hadolint, docker-compose-lint, dockerignore-check]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Summarize Results
+        run: |
+          echo "## Docker Lint Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Hadolint | ${{ needs.hadolint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Compose | ${{ needs.docker-compose-lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dockerignore | ${{ needs.dockerignore-check.result }} |" >> $GITHUB_STEP_SUMMARY
