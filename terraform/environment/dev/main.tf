@@ -5,7 +5,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/*arm64*"]
+    values = ["ubuntu/images/hvm-ssd/*amd64*"]
   }
 
   filter {
