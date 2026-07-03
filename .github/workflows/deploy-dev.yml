@@ -47,8 +47,8 @@ jobs:
     with:
       environment-directory: 'terraform/environment/dev'
       aws-region: 'us-east-1'
-      vault-url: ${{ inputs.vault-url || inputs.vault-url }}
-      vault-role: ${{ inputs.vault-role || inputs.vault-role }}
+      vault-url: ${{ inputs.vault-url || secrets.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
     secrets:
       aws_access_key_id: ${{ secrets['aws_access_key_id'] }}
       aws_secret_access_key: ${{ secrets['aws_secret_access_key'] }}
@@ -67,11 +67,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch AWS Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        if: ${{ (inputs.vault-url || secrets.VAULT_URL) != '' && (inputs.vault-role || secrets.VAULT_ROLE) != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url || inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role || inputs.vault-role }}
+          vault-url: ${{ inputs.vault-url || secrets.VAULT_URL }}
+          vault-role: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
             secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY
@@ -110,11 +110,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        if: ${{ (inputs.vault-url || secrets.VAULT_URL) != '' && (inputs.vault-role || secrets.VAULT_ROLE) != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url || inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role || inputs.vault-role }}
+          vault-url: ${{ inputs.vault-url || secrets.VAULT_URL }}
+          vault-role: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY ;
             secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;

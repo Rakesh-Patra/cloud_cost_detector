@@ -37,11 +37,11 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch Infracost Secret from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        if: ${{ (inputs.vault-url || secrets.VAULT_URL) != '' && (inputs.vault-role || secrets.VAULT_ROLE) != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role }}
+          vault-url: ${{ inputs.vault-url || secrets.VAULT_URL }}
+          vault-role: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ci infracost_key | INFRACOST_API_KEY
 
