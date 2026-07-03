@@ -77,7 +77,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ env.REGISTRY_USERNAME || inputs.registry-username || github.actor }}
-          password: ${{ env.REGISTRY_PASSWORD || secrets['registry_password'] }}
+          password: ${{ env.REGISTRY_PASSWORD || secrets['registry_password'] || github.token }}
           ecr-login: ${{ inputs.ecr-login }}
 
       - name: Define Image Names
