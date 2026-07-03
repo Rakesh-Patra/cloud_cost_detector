@@ -23,6 +23,10 @@ on:
         type: string
         default: ''
     secrets:
+      VAULT_ROLE:
+        required: false
+      VAULT_URL:
+        required: false
       slack_webhook_url:
         required: false
 

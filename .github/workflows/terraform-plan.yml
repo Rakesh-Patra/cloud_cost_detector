@@ -28,6 +28,12 @@ on:
         type: string
         default: ''
     secrets:
+      AWS_ROLE_TO_ASSUME:
+        required: false
+      VAULT_ROLE:
+        required: false
+      VAULT_URL:
+        required: false
       aws_access_key_id:
         required: false
       aws_secret_access_key:
