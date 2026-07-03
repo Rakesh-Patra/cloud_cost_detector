@@ -53,8 +53,8 @@ jobs:
     with:
       environment-directory: 'terraform/environment/prod'
       aws-region: 'us-east-1'
-      vault-url: ${{ inputs.vault-url || secrets.VAULT_URL }}
-      vault-role: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url }}
+      vault-role: ${{ inputs.vault-role }}
     secrets:
       aws_access_key_id: ${{ secrets['aws_access_key_id'] }}
       aws_secret_access_key: ${{ secrets['aws_secret_access_key'] }}
