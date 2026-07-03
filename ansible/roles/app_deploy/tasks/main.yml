@@ -1,0 +1,127 @@
+---
+# ─── App Deploy Tasks ────────────────────────────────────────────────────────
+# Installs Docker, authenticates to GHCR, pulls images, and deploys via Compose
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: true
+
+- name: Install Docker prerequisites
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+  become: true
+
+- name: Add Docker GPG key
+  ansible.builtin.shell: |
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+  args:
+    creates: /etc/apt/keyrings/docker.asc
+  become: true
+
+- name: Add Docker apt repository
+  ansible.builtin.shell: |
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo ${VERSION_CODENAME}) stable" | \
+    tee /etc/apt/sources.list.d/docker.list > /dev/null
+  args:
+    creates: /etc/apt/sources.list.d/docker.list
+  become: true
+
+- name: Install Docker Engine and Compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Ensure Docker service is running and enabled
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+  become: true
+
+- name: Add deploy user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: yes
+  become: true
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+  become: true
+
+- name: Log in to GitHub Container Registry (GHCR)
+  ansible.builtin.shell: |
+    echo "{{ ghcr_token }}" | docker login ghcr.io -u "{{ ghcr_username }}" --password-stdin
+  when: ghcr_token | length > 0
+  no_log: true
+
+- name: Deploy docker-compose configuration
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ app_dir }}/docker-compose.yml"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+  notify: restart application
+
+- name: Create backend environment file
+  ansible.builtin.copy:
+    content: |
+      GEMINI_API_KEY={{ gemini_api_key }}
+      INSFORGE_PROJECT_URL={{ insforge_project_url }}
+      INSFORGE_ANON_KEY={{ insforge_anon_key }}
+    dest: "{{ app_dir }}/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  no_log: true
+  notify: restart application
+
+- name: Pull latest Docker images
+  ansible.builtin.shell: |
+    docker compose -f {{ app_dir }}/docker-compose.yml pull
+  register: pull_result
+  changed_when: "'Downloaded' in pull_result.stdout or 'Pull complete' in pull_result.stderr"
+
+- name: Start application containers
+  ansible.builtin.shell: |
+    docker compose -p {{ compose_project }} -f {{ app_dir }}/docker-compose.yml up -d --remove-orphans
+  register: compose_result
+  changed_when: "'Started' in compose_result.stderr or 'Creating' in compose_result.stderr"
+
+- name: Wait for backend health check
+  ansible.builtin.uri:
+    url: "http://localhost:{{ backend_port }}/docs"
+    status_code: 200
+  register: health_result
+  until: health_result.status == 200
+  retries: 12
+  delay: 10
+
+- name: Clean up unused Docker resources
+  ansible.builtin.shell: |
+    docker image prune -af --filter "until=168h"
+  become: true
+  changed_when: false

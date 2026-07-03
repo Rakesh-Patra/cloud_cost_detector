@@ -1,0 +1,33 @@
+# ─── App Deploy Role Defaults ────────────────────────────────────────────────
+# These variables can be overridden from the playbook or command line
+
+# Docker image registry and repository
+docker_registry: "ghcr.io"
+docker_repo: ""  # Set dynamically: e.g., "rakesh-patra/cloud_cost_detector"
+image_tag: "latest"
+
+# Full image names (constructed from above)
+backend_image: "{{ docker_registry }}/{{ docker_repo }}/backend:{{ image_tag }}"
+frontend_image: "{{ docker_registry }}/{{ docker_repo }}/frontend:{{ image_tag }}"
+
+# Application ports
+backend_port: 8000
+frontend_port: 5173
+
+# Application directory on the EC2 host
+app_dir: "/opt/cloud_cost_detector"
+
+# Docker Compose project name
+compose_project: "cloud_cost_detector"
+
+# Application environment variables (populated from Vault secrets)
+gemini_api_key: ""
+insforge_project_url: ""
+insforge_anon_key: ""
+
+# GHCR authentication
+ghcr_username: ""
+ghcr_token: ""
+
+# Docker Compose restart policy
+restart_policy: "unless-stopped"

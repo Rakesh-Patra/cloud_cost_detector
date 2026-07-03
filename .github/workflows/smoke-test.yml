@@ -21,16 +21,24 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Ping Health Endpoint
+      - name: Ping Frontend Health
         uses: ./.github/actions/health-check
         with:
           url: ${{ inputs.target-url }}
           max-attempts: 6
           delay-seconds: 10
 
-      - name: Execute API verification tests
+      - name: Ping Backend Health
+        uses: ./.github/actions/health-check
+        with:
+          # Assumes backend is running either on port 8000 or routed subpath /api
+          url: "${{ inputs.target-url }}:8000/docs"
+          max-attempts: 6
+          delay-seconds: 10
+
+      - name: Verify Backend API JSON Response
         shell: bash
         run: |
-          echo "Running additional endpoint response validation tests..."
-          # Can run a custom pytest or curl script here if needed
-          echo "Smoke tests passed successfully."
+          echo "Verifying API Docs JSON specification endpoint..."
+          curl -f -s "${{ inputs.target-url }}:8000/openapi.json" > /dev/null
+          echo "API schema check passed successfully."

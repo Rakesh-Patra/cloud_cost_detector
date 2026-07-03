@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: ''
+    secrets:
+      aws-access-key-id:
+        required: false
+      aws-secret-access-key:
+        required: false
   workflow_dispatch:
     inputs:
       image-tag:
@@ -34,7 +39,7 @@ on:
 
 jobs:
   deploy-infrastructure:
-    name: Deploy DevOps Infrastructure
+    name: Provision Dev Infrastructure
     uses: ./.github/workflows/terraform-apply.yml
     with:
       environment-directory: 'terraform/environment/dev'
@@ -42,17 +47,86 @@ jobs:
       vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
       vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
     secrets:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws-access-key-id: ${{ secrets.aws-access-key-id || secrets.AWS_ACCESS_KEY_ID }}
+      aws-secret-access-key: ${{ secrets.aws-secret-access-key || secrets.AWS_SECRET_ACCESS_KEY }}
+
+  get-ec2-ip:
+    name: Get EC2 Public IP
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      ec2_ip: ${{ steps.terraform-output.outputs.ec2_ip }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Fetch AWS Secrets from Vault
+        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        uses: ./.github/actions/vault-secrets
+        with:
+          vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
+          vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
+          vault-secrets: |
+            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
+            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY
+
+      - name: Configure AWS Credentials
+        uses: ./.github/actions/aws-auth
+        with:
+          aws-region: 'us-east-1'
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Initialize Terraform
+        uses: ./.github/actions/terraform-init
+        with:
+          environment-directory: 'terraform/environment/dev'
+
+      - name: Get EC2 Public IP
+        id: terraform-output
+        shell: bash
+        working-directory: terraform/environment/dev
+        run: |
+          EC2_IP=$(terraform output -raw public_ip)
+          echo "ec2_ip=${EC2_IP}" >> $GITHUB_OUTPUT
+          echo "EC2 Public IP: ${EC2_IP}"
 
   deploy-app:
     name: Deploy Dev Application
-    needs: deploy-infrastructure
+    needs: get-ec2-ip
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
     steps:
-      - name: Deploy API and Frontend
-        shell: bash
-        run: |
-          echo "Deploying dev environment application with tag: ${{ inputs.image-tag }}"
-          # Trigger deploy to ECS, K8s, or EC2 here
-          echo "Deployment successful."
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Fetch Secrets from Vault
+        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        uses: ./.github/actions/vault-secrets
+        with:
+          vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
+          vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
+          vault-secrets: |
+            secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY ;
+            secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;
+            secret/data/cloud_cost/app insforge_project_url | INSFORGE_PROJECT_URL ;
+            secret/data/cloud_cost/app insforge_anon_key | INSFORGE_ANON_KEY
+
+      - name: Deploy via Ansible
+        uses: ./.github/actions/ansible-deploy
+        with:
+          ec2-host: ${{ needs.get-ec2-ip.outputs.ec2_ip }}
+          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+          image-tag: ${{ inputs.image-tag || github.event.inputs.image-tag }}
+          docker-repo: ${{ github.repository }}
+          ghcr-username: ${{ github.actor }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          gemini-api-key: ${{ env.GEMINI_API_KEY }}
+          insforge-project-url: ${{ env.INSFORGE_PROJECT_URL }}
+          insforge-anon-key: ${{ env.INSFORGE_ANON_KEY }}

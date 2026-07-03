@@ -1,0 +1,42 @@
+# ─── Docker Compose Template ─────────────────────────────────────────────────
+# Rendered by Ansible with Vault-sourced secrets and GHCR image tags
+
+services:
+  backend:
+    image: {{ backend_image }}
+    container_name: cloud_cost_backend
+    ports:
+      - "{{ backend_port }}:8000"
+    env_file:
+      - .env
+    environment:
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - backend_data:/app/db.sqlite3
+      - /home/{{ ansible_user }}/.aws:/home/nonroot/.aws:ro
+    restart: {{ restart_policy }}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    image: {{ frontend_image }}
+    container_name: cloud_cost_frontend
+    ports:
+      - "{{ frontend_port }}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: {{ restart_policy }}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  backend_data:
+    driver: local

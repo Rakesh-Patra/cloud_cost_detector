@@ -1,0 +1,76 @@
+---
+# ─── Rollback Playbook ───────────────────────────────────────────────────────
+# Rolls back the application to a previous Docker image tag
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/rollback.yml \
+#     -i "<ec2_public_ip>," \
+#     -u ubuntu \
+#     --private-key /tmp/ssh_key.pem \
+#     -e "image_tag=<previous_tag> docker_repo=rakesh-patra/cloud_cost_detector"
+
+- name: Rollback Cloud Cost Detector
+  hosts: all
+  gather_facts: true
+  become: false
+
+  vars:
+    app_dir: "/opt/cloud_cost_detector"
+    compose_project: "cloud_cost_detector"
+
+  pre_tasks:
+    - name: Validate rollback target
+      ansible.builtin.assert:
+        that:
+          - docker_repo | length > 0
+          - image_tag | length > 0
+        fail_msg: "Required variables 'docker_repo' and 'image_tag' must be set for rollback"
+
+    - name: Display rollback information
+      ansible.builtin.debug:
+        msg: |
+          ⚠️  ROLLBACK IN PROGRESS
+          ───────────────────────────────────────────────────
+          Target Host  : {{ inventory_hostname }}
+          Rolling back to tag : {{ image_tag }}
+          ───────────────────────────────────────────────────
+
+  tasks:
+    - name: Log in to GHCR
+      ansible.builtin.shell: |
+        echo "{{ ghcr_token }}" | docker login ghcr.io -u "{{ ghcr_username }}" --password-stdin
+      when: ghcr_token is defined and ghcr_token | length > 0
+      no_log: true
+
+    - name: Update docker-compose with rollback image tag
+      ansible.builtin.template:
+        src: ../roles/app_deploy/templates/docker-compose.yml.j2
+        dest: "{{ app_dir }}/docker-compose.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Pull rollback images
+      ansible.builtin.shell: |
+        docker compose -f {{ app_dir }}/docker-compose.yml pull
+
+    - name: Restart with rollback images
+      ansible.builtin.shell: |
+        docker compose -p {{ compose_project }} -f {{ app_dir }}/docker-compose.yml up -d --remove-orphans --force-recreate
+
+    - name: Wait for backend health check
+      ansible.builtin.uri:
+        url: "http://localhost:8000/docs"
+        status_code: 200
+      register: health_result
+      until: health_result.status == 200
+      retries: 12
+      delay: 10
+
+  post_tasks:
+    - name: Display rollback result
+      ansible.builtin.debug:
+        msg: |
+          ✅ Rollback to {{ image_tag }} successful!
+          Backend  → http://{{ inventory_hostname }}:8000/docs
+          Frontend → http://{{ inventory_hostname }}:5173

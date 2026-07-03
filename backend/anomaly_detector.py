@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime, timedelta
-import random
+import random  # nosec B411
 import httpx
 import boto3
 from botocore.exceptions import ClientError
@@ -71,11 +71,11 @@ def fetch_daily_spend(region: str, threshold: float = 1000.0) -> dict:
         # We seed random using dates to keep the results stable across requests but realistic
         for i in range(21, 0, -1):
             date_str = (end_date - timedelta(days=i)).strftime('%Y-%m-%d')
-            random.seed(date_str)
+            random.seed(date_str)  # nosec B311
             
             # Base daily cost within +/- 15% of daily_base
             variation = daily_base * 0.15
-            amount = round(daily_base + (random.random() * 2 - 1) * variation, 2)
+            amount = round(daily_base + (random.random() * 2 - 1) * variation, 2)  # nosec B311
             
             daily_costs.append({
                 'date': date_str,
