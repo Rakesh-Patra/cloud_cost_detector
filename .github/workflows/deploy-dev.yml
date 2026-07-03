@@ -50,8 +50,8 @@ jobs:
       vault-url: ${{ inputs.vault-url || inputs.vault-url }}
       vault-role: ${{ inputs.vault-role || inputs.vault-role }}
     secrets:
-      aws-access-key-id: ${{ secrets['aws-access-key-id'] || secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets['aws-secret-access-key'] || secrets.AWS_SECRET_ACCESS_KEY }}
+      aws-access-key-id: ${{ secrets['aws-access-key-id'] }}
+      aws-secret-access-key: ${{ secrets['aws-secret-access-key'] }}
 
   get-ec2-ip:
     name: Get EC2 Public IP
@@ -80,8 +80,8 @@ jobs:
         uses: ./.github/actions/aws-auth
         with:
           aws-region: 'us-east-1'
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets['aws-access-key-id'] }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets['aws-secret-access-key'] }}
 
       - name: Initialize Terraform
         uses: ./.github/actions/terraform-init
