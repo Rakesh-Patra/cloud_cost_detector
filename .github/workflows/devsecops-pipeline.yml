@@ -87,7 +87,6 @@ jobs:
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
-      registry-username: ${{ github.actor }}
       registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   # 5. Deploy to Dev (when push is on develop branch)
