@@ -71,8 +71,6 @@ jobs:
 
           vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
-            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
-            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY ;
             secret/data/cloud_cost/docker username | REGISTRY_USERNAME ;
             secret/data/cloud_cost/docker password | REGISTRY_PASSWORD
 

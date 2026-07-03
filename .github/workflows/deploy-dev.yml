@@ -72,24 +72,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Fetch AWS Secrets from Vault
-
-        env:
-
-          VAULT_URL: ${{ inputs.vault-url || secrets.VAULT_URL }}
-
-          VAULT_ROLE: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
-
-        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
-        uses: ./.github/actions/vault-secrets
-        with:
-
-          vault-url: ${{ env.VAULT_URL }}
-
-          vault-role: ${{ env.VAULT_ROLE }}
-          vault-secrets: |
-            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
-            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY
 
       - name: Configure AWS Credentials
         uses: ./.github/actions/aws-auth
