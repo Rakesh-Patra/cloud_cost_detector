@@ -20,8 +20,6 @@ on:
     secrets:
       AWS_ROLE_TO_ASSUME:
         required: false
-      GITHUB_TOKEN:
-        required: false
       VAULT_ROLE:
         required: false
       VAULT_URL:
