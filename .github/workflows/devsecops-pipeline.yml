@@ -57,8 +57,8 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/infracost.yml
     with:
-      vault-url: ${{ github.event.inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ github.event.inputs.vault-role || vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
       INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
 
@@ -69,8 +69,8 @@ jobs:
     uses: ./.github/workflows/terraform-plan.yml
     with:
       environment-directory: 'terraform/environment/dev'
-      vault-url: ${{ github.event.inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ github.event.inputs.vault-role || vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -84,8 +84,8 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
       registry: 'ghcr.io'
-      vault-url: ${{ github.event.inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ github.event.inputs.vault-role || vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
       registry-username: ${{ github.actor }}
       registry-password: ${{ secrets.GITHUB_TOKEN }}
@@ -98,8 +98,8 @@ jobs:
     uses: ./.github/workflows/deploy-dev.yml
     with:
       image-tag: ${{ github.sha }}
-      vault-url: ${{ github.event.inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ github.event.inputs.vault-role || vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -112,8 +112,8 @@ jobs:
     uses: ./.github/workflows/deploy-staging.yml
     with:
       image-tag: ${{ github.sha }}
-      vault-url: ${{ github.event.inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ github.event.inputs.vault-role || vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -126,8 +126,8 @@ jobs:
     uses: ./.github/workflows/deploy-prod.yml
     with:
       image-tag: ${{ github.sha }}
-      vault-url: ${{ github.event.inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ github.event.inputs.vault-role || vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -166,7 +166,7 @@ jobs:
     with:
       status: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
       message: 'DevSecOps orchestrator pipeline execution status check.'
-      vault-url: ${{ github.event.inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ github.event.inputs.vault-role || vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
       slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
