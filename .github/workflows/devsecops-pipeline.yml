@@ -24,7 +24,7 @@ jobs:
     name: Run CI
     uses: ./.github/workflows/ci.yml
 
-  # 2. Security Scans Phase (Run concurrently with CI)
+  # 2. Security Scans Phase
   security-gitleaks:
     name: Run Gitleaks Scan
     uses: ./.github/workflows/security-gitleaks.yml
@@ -50,4 +50,15 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/security-dependency-review.yml
 
-
+  # 3. Docker Build
+  docker-build:
+    name: Build Docker Images
+    needs: [ci, security-gitleaks, security-trivy, security-bandit, security-semgrep]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      image-tag: ${{ github.sha }}
+      registry: 'ghcr.io'
+      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
+    secrets: inherit
