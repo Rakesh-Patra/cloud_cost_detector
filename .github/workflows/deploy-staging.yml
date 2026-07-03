@@ -57,45 +57,10 @@ jobs:
       vault-role: ${{ inputs.vault-role }}
     secrets: inherit
 
-  get-ec2-ip:
-    name: Get EC2 Public IP
-    needs: deploy-infrastructure
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    outputs:
-      ec2_ip: ${{ steps.terraform-output.outputs.ec2_ip }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-
-      - name: Configure AWS Credentials
-        uses: ./.github/actions/aws-auth
-        with:
-          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: 'us-east-1'
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets['aws_access_key_id'] }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets['aws_secret_access_key'] }}
-
-      - name: Initialize Terraform
-        uses: ./.github/actions/terraform-init
-        with:
-          environment-directory: 'terraform/environment/stag'
-
-      - name: Get EC2 Public IP
-        id: terraform-output
-        shell: bash
-        working-directory: terraform/environment/stag
-        run: |
-          EC2_IP=$(terraform output -raw public_ip)
-          echo "ec2_ip=${EC2_IP}" >> $GITHUB_OUTPUT
-          echo "EC2 Public IP: ${EC2_IP}"
 
   deploy-app:
     name: Deploy Staging Application
-    needs: get-ec2-ip
+    needs: deploy-infrastructure
     runs-on: ubuntu-latest
     environment: staging
     permissions:
@@ -130,7 +95,7 @@ jobs:
       - name: Deploy via Ansible
         uses: ./.github/actions/ansible-deploy
         with:
-          ec2-host: ${{ needs.get-ec2-ip.outputs.ec2_ip }}
+          ec2-host: ${{ needs.deploy-infrastructure.outputs.public_ip }}
           ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
           image-tag: ${{ inputs.image-tag || inputs.image-tag }}
           docker-repo: ${{ github.repository }}

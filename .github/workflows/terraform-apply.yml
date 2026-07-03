@@ -27,6 +27,10 @@ on:
         required: false
         type: string
         default: ''
+    outputs:
+      public_ip:
+        description: 'The public IP of the provisioned EC2 instance'
+        value: ${{ jobs.apply.outputs.public_ip }}
     secrets:
       AWS_ROLE_TO_ASSUME:
         required: false
@@ -43,6 +47,8 @@ jobs:
   apply:
     name: Apply Infrastructure Changes
     runs-on: ubuntu-latest
+    outputs:
+      public_ip: ${{ steps.get-output.outputs.public_ip }}
     permissions:
       id-token: write
       contents: read
@@ -69,3 +75,10 @@ jobs:
         working-directory: ${{ inputs.environment-directory }}
         run: |
           terraform apply -auto-approve
+
+      - name: Get Output IP
+        id: get-output
+        shell: bash
+        working-directory: ${{ inputs.environment-directory }}
+        run: |
+          echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
