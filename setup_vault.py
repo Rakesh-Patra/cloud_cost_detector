@@ -40,11 +40,15 @@ def setup():
         # Start Vault server in dev mode
         print("Starting Vault server in dev mode...")
         log_file = open(os.path.join(BIN_DIR, "vault.log"), "w")
+        
+        # 0x00000008 is the flag for DETACHED_PROCESS on Windows
+        # This keeps Vault running independently after the Python script exits
+        DETACHED_PROCESS = 0x00000008
         subprocess.Popen(
             [VAULT_EXE, "server", "-dev", "-dev-root-token-id=root", "-dev-listen-address=127.0.0.1:8200"],
             stdout=log_file,
             stderr=log_file,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+            creationflags=DETACHED_PROCESS
         )
         print("Vault server started in background. Log saved in bin/vault.log.")
         time.sleep(3) # Wait for it to boot
