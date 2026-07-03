@@ -65,12 +65,13 @@ runs:
         ANSIBLE_HOST_KEY_CHECKING: 'False'
         ANSIBLE_STDOUT_CALLBACK: 'default'
       run: |
+        REPO_LOWER=$(echo "${{ inputs.docker-repo }}" | tr '[:upper:]' '[:lower:]')
         ansible-playbook ansible/playbooks/${{ inputs.playbook }}.yml \
           -i "${{ inputs.ec2-host }}," \
           -u "${{ inputs.ssh-user }}" \
           --private-key /tmp/.ansible_ssh/deploy_key.pem \
           -e "image_tag=${{ inputs.image-tag }}" \
-          -e "docker_repo=${{ inputs.docker-repo }}" \
+          -e "docker_repo=${REPO_LOWER}" \
           -e "ghcr_username=${{ inputs.ghcr-username }}" \
           -e "ghcr_token=${{ inputs.ghcr-token }}" \
           -e "gemini_api_key=${{ inputs.gemini-api-key }}" \
