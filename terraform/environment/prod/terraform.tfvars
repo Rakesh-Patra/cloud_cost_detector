@@ -1,4 +1,4 @@
 environment   = "prod"
-instance_type = "t3.medium"
+instance_type = "t4g.medium"
 key_name      = "cloud_cost"
 aws_region    = "us-east-1"
