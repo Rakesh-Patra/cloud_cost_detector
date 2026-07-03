@@ -55,9 +55,7 @@ jobs:
       aws-region: 'us-east-1'
       vault-url: ${{ inputs.vault-url }}
       vault-role: ${{ inputs.vault-role }}
-    secrets:
-      aws_access_key_id: ${{ secrets['aws_access_key_id'] }}
-      aws_secret_access_key: ${{ secrets['aws_secret_access_key'] }}
+    secrets: inherit
 
   get-ec2-ip:
     name: Get EC2 Public IP
