@@ -28,9 +28,9 @@ on:
         type: string
         default: ''
     secrets:
-      aws-access-key-id:
+      aws_access_key_id:
         required: false
-      aws-secret-access-key:
+      aws_secret_access_key:
         required: false
 
 jobs:
@@ -59,8 +59,8 @@ jobs:
         with:
           aws-role-to-assume: ${{ inputs.aws-role-to-assume }}
           aws-region: ${{ inputs.aws-region }}
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets['aws-access-key-id'] }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets['aws-secret-access-key'] }}
+          aws_access_key_id: ${{ env.AWS_ACCESS_KEY_ID || secrets['aws_access_key_id'] }}
+          aws_secret_access_key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets['aws_secret_access_key'] }}
 
       - name: Initialize Terraform
         uses: ./.github/actions/terraform-init

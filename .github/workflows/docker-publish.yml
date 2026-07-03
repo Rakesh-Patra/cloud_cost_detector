@@ -34,7 +34,7 @@ on:
         type: string
         default: ''
     secrets:
-      registry-password:
+      registry_password:
         required: false
 
 jobs:
@@ -69,15 +69,15 @@ jobs:
         uses: ./.github/actions/aws-auth
         with:
           aws-region: 'us-east-1'
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws_access_key_id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ env.AWS_SECRET_ACCESS_KEY }}
 
       - name: Log in to Docker Registry
         uses: ./.github/actions/docker-login
         with:
           registry: ${{ inputs.registry }}
           username: ${{ env.REGISTRY_USERNAME || inputs.registry-username || github.actor }}
-          password: ${{ env.REGISTRY_PASSWORD || secrets['registry-password'] }}
+          password: ${{ env.REGISTRY_PASSWORD || secrets['registry_password'] }}
           ecr-login: ${{ inputs.ecr-login }}
 
       - name: Define Image Names

@@ -72,8 +72,8 @@ jobs:
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   # 4. Build & Publish (only on push/merges to main or develop)
   docker-build:
@@ -87,7 +87,7 @@ jobs:
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
+      registry_password: ${{ secrets.GITHUB_TOKEN }}
 
   # 5. Deploy to Dev (when push is on develop branch)
   deploy-dev:
@@ -100,8 +100,8 @@ jobs:
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   # 6. Deploy to Staging (when push is on develop branch, run after dev deployment)
   deploy-staging:
@@ -114,8 +114,8 @@ jobs:
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   # 7. Deploy to Production (when push is on main branch)
   deploy-production:
@@ -128,8 +128,8 @@ jobs:
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   # 8. Smoke Testing
   smoke-test-dev:
@@ -168,4 +168,4 @@ jobs:
       vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
       vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets:
-      slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+      slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -23,7 +23,7 @@ on:
         type: string
         default: ''
     secrets:
-      slack-webhook-url:
+      slack_webhook_url:
         required: false
 
 jobs:
@@ -49,6 +49,6 @@ jobs:
       - name: Trigger Slack Notification
         uses: ./.github/actions/slack-notify
         with:
-          slack-webhook-url: ${{ env.SLACK_WEBHOOK_URL || secrets['slack-webhook-url'] }}
+          slack_webhook_url: ${{ env.SLACK_WEBHOOK_URL || secrets['slack_webhook_url'] }}
           status: ${{ inputs.status }}
           message: ${{ inputs.message }}
