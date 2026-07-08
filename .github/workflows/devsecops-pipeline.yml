@@ -19,42 +19,33 @@ jobs:
   ci:
     name: Run CI
     uses: ./.github/workflows/ci.yml
-
   # 2. Security Scans Phase (Run concurrently with CI)
   security-gitleaks:
     name: Run Gitleaks Scan
     uses: ./.github/workflows/security-gitleaks.yml
-
   security-checkov:
     name: Run Checkov Scan
     uses: ./.github/workflows/security-checkov.yml
-
   security-trivy:
     name: Run Trivy Scan
     uses: ./.github/workflows/security-trivy.yml
-
   security-bandit:
     name: Run Bandit Scan
     uses: ./.github/workflows/security-bandit.yml
-
   security-semgrep:
     name: Run Semgrep Scan
     uses: ./.github/workflows/security-semgrep.yml
-
   security-dependency-review:
     name: Run Dependency Review
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/security-dependency-review.yml
-
   # 3. Cost & Infrastructure Verification (on Pull Requests)
   infracost:
     name: Run Infracost
     needs: [ci, security-checkov]
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/infracost.yml
-    with:
     secrets: inherit
-
   terraform-plan-dev:
     name: Terraform Plan Dev
     needs: [ci, security-checkov]
@@ -63,7 +54,6 @@ jobs:
     with:
       environment-directory: 'terraform/environment/dev'
     secrets: inherit
-
   # 4. Build & Publish (only on push/merges to main or develop)
   docker-build:
     name: Build Docker Images
@@ -74,7 +64,6 @@ jobs:
       image-tag: ${{ github.sha }}
       registry: 'ghcr.io'
     secrets: inherit
-
   # 5. Deploy to Dev (when push is on develop branch)
   deploy-dev:
     name: Deploy to Dev
@@ -84,7 +73,6 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
     secrets: inherit
-
   # 6. Deploy to Staging (run after dev deployment)
   deploy-staging:
     name: Deploy to Staging
@@ -94,7 +82,6 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
     secrets: inherit
-
   # 7. Deploy to Production (when push is on main branch)
   deploy-production:
     name: Deploy to Production
@@ -104,7 +91,6 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
     secrets: inherit
-
   # 8. Smoke Testing
   smoke-test-dev:
     name: Smoke Test Dev
@@ -113,7 +99,6 @@ jobs:
     uses: ./.github/workflows/smoke-test.yml
     with:
       target-url: 'http://${{ needs.deploy-dev.outputs.public_ip }}'
-
   smoke-test-staging:
     name: Smoke Test Staging
     needs: deploy-staging
@@ -121,7 +106,6 @@ jobs:
     uses: ./.github/workflows/smoke-test.yml
     with:
       target-url: 'http://${{ needs.deploy-staging.outputs.public_ip }}'
-
   smoke-test-prod:
     name: Smoke Test Production
     needs: deploy-production
@@ -129,7 +113,6 @@ jobs:
     uses: ./.github/workflows/smoke-test.yml
     with:
       target-url: 'http://${{ needs.deploy-production.outputs.public_ip }}'
-
   # 9. Pipeline Slack notification
   notify-status:
     name: Pipeline Notifications

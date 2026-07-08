@@ -45,8 +45,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-
       - name: Configure AWS Credentials
         uses: ./.github/actions/aws-auth
         with:
@@ -54,18 +52,15 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets['aws_access_key_id'] }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets['aws_secret_access_key'] }}
-
       - name: Initialize Terraform
         uses: ./.github/actions/terraform-init
         with:
           environment-directory: ${{ inputs.environment-directory }}
-
       - name: Terraform Apply
         shell: bash
         working-directory: ${{ inputs.environment-directory }}
         run: |
           terraform apply -auto-approve
-
       - name: Get Output IP
         id: get-output
         shell: bash

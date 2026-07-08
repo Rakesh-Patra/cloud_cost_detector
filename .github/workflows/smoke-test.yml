@@ -21,14 +21,12 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Ping Frontend Health
         uses: ./.github/actions/health-check
         with:
           url: "${{ inputs.target-url }}:5173"
           max-attempts: 6
           delay-seconds: 10
-
       - name: Ping Backend Health
         uses: ./.github/actions/health-check
         with:
@@ -36,7 +34,6 @@ jobs:
           url: "${{ inputs.target-url }}:8000/docs"
           max-attempts: 6
           delay-seconds: 10
-
       - name: Verify Backend API JSON Response
         shell: bash
         run: |

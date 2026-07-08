@@ -44,29 +44,22 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Fetch Secrets from Vault
-
-
-
-        if: ${{ secrets.VAULT_URL != '' && secrets.VAULT_ROLE != '' }}
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-
-
-          vault-url: ${{ secrets.VAULT_URL }}
-
-
-          vault-role: ${{ secrets.VAULT_ROLE }}
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/docker username | REGISTRY_USERNAME ;
             secret/data/cloud_cost/docker password | REGISTRY_PASSWORD ;
             secret/data/cloud_cost/app insforge_project_url | INSFORGE_PROJECT_URL ;
             secret/data/cloud_cost/app insforge_anon_key | INSFORGE_ANON_KEY
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       # If using AWS credentials from Vault/Secrets
       - name: Configure AWS Credentials (for ECR Login fallback)
         if: ${{ inputs.ecr-login == 'true' }}
@@ -76,7 +69,6 @@ jobs:
           aws-region: 'us-east-1'
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
-
       - name: Log in to Docker Registry
         uses: ./.github/actions/docker-login
         with:
@@ -84,7 +76,6 @@ jobs:
           username: ${{ inputs.registry == 'ghcr.io' && github.actor || env.REGISTRY_USERNAME || inputs.registry-username || github.actor }}
           password: ${{ inputs.registry == 'ghcr.io' && github.token || env.REGISTRY_PASSWORD || secrets['registry_password'] || github.token }}
           ecr-login: ${{ inputs.ecr-login }}
-
       - name: Define Image Names
         shell: bash
         run: |
@@ -92,7 +83,6 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "BACKEND_IMAGE=${{ inputs.registry }}/${REPO_LOWER}/backend" >> $GITHUB_ENV
           echo "FRONTEND_IMAGE=${{ inputs.registry }}/${REPO_LOWER}/frontend" >> $GITHUB_ENV
-
       - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
         with:
@@ -104,7 +94,6 @@ jobs:
             ${{ env.BACKEND_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
       - name: Build and Push Frontend Image
         uses: docker/build-push-action@v5
         with:

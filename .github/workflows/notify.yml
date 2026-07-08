@@ -30,23 +30,17 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Fetch Slack Webhook from Vault
-
-
-
-        if: ${{ secrets.VAULT_URL != '' && secrets.VAULT_ROLE != '' }}
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-
-
-          vault-url: ${{ secrets.VAULT_URL }}
-
-
-          vault-role: ${{ secrets.VAULT_ROLE }}
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ci slack_webhook | SLACK_WEBHOOK_URL
-
       - name: Trigger Slack Notification
         uses: ./.github/actions/slack-notify
         with:

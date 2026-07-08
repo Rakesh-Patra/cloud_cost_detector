@@ -29,11 +29,9 @@ jobs:
         dockerfile:
           - { path: 'backend/dockerfile', name: 'Backend' }
           - { path: 'frontend/Dockerfile', name: 'Frontend' }
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Run Hadolint on ${{ matrix.dockerfile.name }}
         uses: hadolint/hadolint-action@v3.1.0
         with:
@@ -43,7 +41,6 @@ jobs:
           # DL3008 - Pin versions in apt-get install
           # DL3013 - Pin versions in pip install
           # DL3018 - Pin versions in apk add
-
       - name: Upload Hadolint Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -52,31 +49,26 @@ jobs:
           path: hadolint_output.*
           if-no-files-found: ignore
           retention-days: 7
-
   docker-compose-lint:
     name: Docker Compose Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Validate docker-compose.yml
         run: |
           docker compose -f docker-compose.yml config --quiet
           echo "✅ docker-compose.yml is valid"
-
   dockerignore-check:
     name: Dockerignore Best Practices
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Check .dockerignore files exist
         run: |
           echo "## Dockerignore Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
           for dir in backend frontend; do
             if [ -f "$dir/.dockerignore" ]; then
               echo "✅ $dir/.dockerignore exists" >> $GITHUB_STEP_SUMMARY
@@ -86,7 +78,6 @@ jobs:
               echo "⚠️  $dir/.dockerignore is MISSING" >> $GITHUB_STEP_SUMMARY
             fi
           done
-
       - name: Verify common ignores
         run: |
           for dir in backend frontend; do
@@ -101,7 +92,6 @@ jobs:
               done
             fi
           done
-
   summary:
     name: Docker Lint Summary
     needs: [hadolint, docker-compose-lint, dockerignore-check]

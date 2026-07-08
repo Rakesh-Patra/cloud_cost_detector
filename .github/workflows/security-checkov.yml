@@ -12,7 +12,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@master
         with:

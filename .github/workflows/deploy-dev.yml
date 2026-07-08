@@ -38,8 +38,6 @@ jobs:
       environment-directory: 'terraform/environment/dev'
       aws-region: 'us-east-1'
     secrets: inherit
-
-
   deploy-app:
     name: Deploy Dev Application
     needs: deploy-infrastructure
@@ -51,26 +49,20 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Fetch Secrets from Vault
-
-
-
-        if: ${{ secrets.VAULT_URL != '' && secrets.VAULT_ROLE != '' }}
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-
-
-          vault-url: ${{ secrets.VAULT_URL }}
-
-
-          vault-role: ${{ secrets.VAULT_ROLE }}
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY ;
             secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;
             secret/data/cloud_cost/app insforge_project_url | INSFORGE_PROJECT_URL ;
             secret/data/cloud_cost/app insforge_anon_key | INSFORGE_ANON_KEY
-
       - name: Deploy via Ansible
         uses: ./.github/actions/ansible-deploy
         with:

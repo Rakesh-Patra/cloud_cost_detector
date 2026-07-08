@@ -22,39 +22,30 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Fetch Infracost Secret from Vault
-
-
-
-        if: ${{ secrets.VAULT_URL != '' && secrets.VAULT_ROLE != '' }}
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-
-
-          vault-url: ${{ secrets.VAULT_URL }}
-
-
-          vault-role: ${{ secrets.VAULT_ROLE }}
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ci infracost_key | INFRACOST_API_KEY
-
       - name: Setup Infracost
         uses: infracost/actions/setup@v3
         with:
           api-key: ${{ env.INFRACOST_API_KEY || secrets.INFRACOST_API_KEY }}
-
       - name: Generate Infracost JSON
         shell: bash
         run: |
           infracost breakdown --path=terraform/ --format=json --out-file=/tmp/infracost.json
-          
       - name: Post Infracost Comment
         shell: bash
         run: |
