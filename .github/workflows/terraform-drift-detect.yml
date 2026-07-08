@@ -25,9 +25,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch Secrets from Vault
-        if: ${{ vars.VAULT_URL != '' && vars.VAULT_ROLE != '' }}
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
             secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY ;
