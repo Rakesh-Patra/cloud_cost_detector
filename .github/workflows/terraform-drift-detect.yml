@@ -28,8 +28,6 @@ jobs:
         if: ${{ vars.VAULT_URL != '' && vars.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ vars.VAULT_URL }}
-          vault-role: ${{ vars.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
             secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY ;

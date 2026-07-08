@@ -15,16 +15,6 @@ on:
         description: 'Target Docker image tag / Git commit to rollback to'
         required: true
         type: string
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        type: string
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        type: string
-        default: ''
 
 jobs:
   get-ec2-ip:
@@ -80,19 +70,17 @@ jobs:
 
       - name: Fetch Secrets from Vault
 
-        env:
 
-          VAULT_URL: ${{ inputs.vault-url || secrets.VAULT_URL }}
 
-          VAULT_ROLE: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
-
-        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
+        if: ${{ secrets.VAULT_URL != '' && secrets.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
 
-          vault-url: ${{ env.VAULT_URL }}
 
-          vault-role: ${{ env.VAULT_ROLE }}
+          vault-url: ${{ secrets.VAULT_URL }}
+
+
+          vault-role: ${{ secrets.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY
 

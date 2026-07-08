@@ -7,16 +7,6 @@ on:
     branches: [ main, develop ]
   workflow_dispatch:
     inputs:
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        type: string
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        type: string
-        default: ''
 
 permissions:
   id-token: write
@@ -63,8 +53,6 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/infracost.yml
     with:
-      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets: inherit
 
   terraform-plan-dev:
@@ -74,8 +62,6 @@ jobs:
     uses: ./.github/workflows/terraform-plan.yml
     with:
       environment-directory: 'terraform/environment/dev'
-      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets: inherit
 
   # 4. Build & Publish (only on push/merges to main or develop)
@@ -87,8 +73,6 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
       registry: 'ghcr.io'
-      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets: inherit
 
   # 5. Deploy to Dev (when push is on develop branch)
@@ -99,8 +83,6 @@ jobs:
     uses: ./.github/workflows/deploy-dev.yml
     with:
       image-tag: ${{ github.sha }}
-      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets: inherit
 
   # 6. Deploy to Staging (run after dev deployment)
@@ -111,8 +93,6 @@ jobs:
     uses: ./.github/workflows/deploy-staging.yml
     with:
       image-tag: ${{ github.sha }}
-      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets: inherit
 
   # 7. Deploy to Production (when push is on main branch)
@@ -123,8 +103,6 @@ jobs:
     uses: ./.github/workflows/deploy-prod.yml
     with:
       image-tag: ${{ github.sha }}
-      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
     secrets: inherit
 
   # 8. Smoke Testing
@@ -161,6 +139,4 @@ jobs:
     with:
       status: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
       message: 'DevSecOps orchestrator pipeline execution status check.'
-      vault-url: ${{ inputs.vault-url }}
-      vault-role: ${{ inputs.vault-role }}
     secrets: inherit

@@ -17,16 +17,6 @@ on:
         required: false
         type: string
         default: 'us-east-1'
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        type: string
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        type: string
-        default: ''
     secrets:
       AWS_ROLE_TO_ASSUME:
         required: false

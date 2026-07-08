@@ -11,16 +11,6 @@ on:
         description: 'Docker image tag to deploy'
         required: true
         type: string
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        type: string
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        type: string
-        default: ''
     secrets:
       AWS_ROLE_TO_ASSUME:
         required: false
@@ -39,16 +29,6 @@ on:
         required: true
         type: string
         default: 'latest'
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        type: string
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        type: string
-        default: ''
 
 jobs:
   deploy-infrastructure:
@@ -57,8 +37,6 @@ jobs:
     with:
       environment-directory: 'terraform/environment/dev'
       aws-region: 'us-east-1'
-      vault-url: ${{ inputs.vault-url }}
-      vault-role: ${{ inputs.vault-role }}
     secrets: inherit
 
 
@@ -76,19 +54,17 @@ jobs:
 
       - name: Fetch Secrets from Vault
 
-        env:
 
-          VAULT_URL: ${{ inputs.vault-url || secrets.VAULT_URL }}
 
-          VAULT_ROLE: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
-
-        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
+        if: ${{ secrets.VAULT_URL != '' && secrets.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
 
-          vault-url: ${{ env.VAULT_URL }}
 
-          vault-role: ${{ env.VAULT_ROLE }}
+          vault-url: ${{ secrets.VAULT_URL }}
+
+
+          vault-role: ${{ secrets.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY ;
             secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;
