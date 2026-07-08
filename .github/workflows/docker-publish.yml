@@ -128,7 +128,7 @@ jobs:
             ${{ env.FRONTEND_IMAGE }}:latest
           build-args: |
             VITE_BACKEND_URL=
-            VITE_INSFORGE_PROJECT_URL=${{ env.INSFORGE_PROJECT_URL || 'https://scf29qqy.us-east.insforge.app' }}
-            VITE_INSFORGE_ANON_KEY=${{ env.INSFORGE_ANON_KEY || 'ik_fc877384331b6eaae45d762900f67d0c' }}
+            VITE_INSFORGE_PROJECT_URL=${{ env.INSFORGE_PROJECT_URL }}
+            VITE_INSFORGE_ANON_KEY=${{ env.INSFORGE_ANON_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

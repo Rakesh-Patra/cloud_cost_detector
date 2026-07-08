@@ -161,6 +161,6 @@ jobs:
     with:
       status: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
       message: 'DevSecOps orchestrator pipeline execution status check.'
-      vault-url: ${{ inputs.vault-url || vars.VAULT_URL }}
-      vault-role: ${{ inputs.vault-role || vars.VAULT_ROLE }}
+      vault-url: ${{ inputs.vault-url || secrets.VAULT_URL }}
+      vault-role: ${{ inputs.vault-role || secrets.VAULT_ROLE }}
     secrets: inherit
