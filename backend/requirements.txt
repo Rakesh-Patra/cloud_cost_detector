@@ -6,4 +6,4 @@ python-dotenv
 websockets
 httpx
 Pillow>=10.0.0
-reportlab>=4.0.0
+reportlab>=5.0.0
