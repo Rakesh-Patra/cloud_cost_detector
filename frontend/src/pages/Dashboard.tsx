@@ -24,7 +24,7 @@ export default function Dashboard() {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     };
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:8000`;
     const response = await fetch(`${backendUrl}${endpoint}`, {
       ...options,
       headers,
@@ -71,7 +71,7 @@ export default function Dashboard() {
     setProgressLogs(['Initializing AWS clients...']);
     
     const analysisId = crypto.randomUUID();
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    const wsUrl = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8000`;
     const ws = new WebSocket(`${wsUrl}/ws/progress/${analysisId}`);
     
     ws.onopen = async () => {
