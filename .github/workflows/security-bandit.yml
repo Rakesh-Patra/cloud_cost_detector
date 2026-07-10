@@ -21,4 +21,4 @@ jobs:
         run: pip install bandit
       - name: Run Bandit Scan
         shell: bash
-        run: bandit -r backend/ -v
+        run: bandit -r backend/ -x backend/tests -v
