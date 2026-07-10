@@ -62,7 +62,9 @@ jobs:
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY ;
             secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;
             secret/data/cloud_cost/app insforge_project_url | INSFORGE_PROJECT_URL ;
-            secret/data/cloud_cost/app insforge_anon_key | INSFORGE_ANON_KEY
+            secret/data/cloud_cost/app insforge_anon_key | INSFORGE_ANON_KEY ;
+            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
+            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY
       - name: Deploy via Ansible
         uses: ./.github/actions/ansible-deploy
         with:
@@ -75,3 +77,5 @@ jobs:
           gemini-api-key: ${{ env.GEMINI_API_KEY }}
           insforge-project-url: ${{ env.INSFORGE_PROJECT_URL }}
           insforge-anon-key: ${{ env.INSFORGE_ANON_KEY }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}

@@ -24,6 +24,9 @@ compose_project: "cloud_cost_detector"
 gemini_api_key: ""
 insforge_project_url: ""
 insforge_anon_key: ""
+aws_access_key_id: ""
+aws_secret_access_key: ""
+aws_region: "us-east-1"
 
 # GHCR authentication
 ghcr_username: ""

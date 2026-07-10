@@ -90,6 +90,9 @@
       GEMINI_API_KEY={{ gemini_api_key }}
       INSFORGE_PROJECT_URL={{ insforge_project_url }}
       INSFORGE_ANON_KEY={{ insforge_anon_key }}
+      AWS_ACCESS_KEY_ID={{ aws_access_key_id }}
+      AWS_SECRET_ACCESS_KEY={{ aws_secret_access_key }}
+      AWS_DEFAULT_REGION={{ aws_region }}
     dest: "{{ app_dir }}/.env"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"

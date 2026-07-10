@@ -41,6 +41,14 @@ inputs:
     description: 'SSH user on EC2'
     required: false
     default: 'ubuntu'
+  aws-access-key-id:
+    description: 'AWS access key ID for backend scans'
+    required: false
+    default: ''
+  aws-secret-access-key:
+    description: 'AWS secret access key for backend scans'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -76,7 +84,9 @@ runs:
           -e "ghcr_token=${{ inputs.ghcr-token }}" \
           -e "gemini_api_key=${{ inputs.gemini-api-key }}" \
           -e "insforge_project_url=${{ inputs.insforge-project-url }}" \
-          -e "insforge_anon_key=${{ inputs.insforge-anon-key }}"
+          -e "insforge_anon_key=${{ inputs.insforge-anon-key }}" \
+          -e "aws_access_key_id=${{ inputs.aws-access-key-id }}" \
+          -e "aws_secret_access_key=${{ inputs.aws-secret-access-key }}"
 
     - name: Clean up SSH key
       shell: bash
