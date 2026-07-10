@@ -88,7 +88,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          file: ./backend/dockerfile
+          file: ./backend/Dockerfile
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:${{ inputs.image-tag }}

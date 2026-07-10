@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         dockerfile:
-          - { path: 'backend/dockerfile', name: 'Backend' }
+          - { path: 'backend/Dockerfile', name: 'Backend' }
           - { path: 'frontend/Dockerfile', name: 'Frontend' }
     steps:
       - name: Checkout Code
