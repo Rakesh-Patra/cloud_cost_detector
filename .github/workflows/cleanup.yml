@@ -13,7 +13,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Clean transient resources
         shell: bash
         run: |

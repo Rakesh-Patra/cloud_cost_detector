@@ -11,13 +11,11 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Setup Python environment
         uses: ./.github/actions/setup-python
         with:
           python-version: '3.11'
           working-directory: './backend'
-
       - name: Lint Python Code
         shell: bash
         run: |
@@ -27,32 +25,28 @@ jobs:
           else
             python -m py_compile ./backend/*.py
           fi
-
       - name: Run Backend Tests
         shell: bash
+        working-directory: ./backend
         run: |
-          # Add actual backend tests here
-          echo "No unit tests defined for python backend yet."
-
+          pip install pytest pytest-asyncio pytest-cov
+          python -m pytest tests/ -v --cov=.
   frontend-ci:
     name: Frontend CI
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Setup Node environment
         uses: ./.github/actions/setup-node
         with:
           node-version: '24'
           working-directory: './frontend'
-
       - name: Lint Frontend Code
         shell: bash
         working-directory: ./frontend
         run: |
           npm run lint
-
       - name: Build Frontend Code
         shell: bash
         working-directory: ./frontend

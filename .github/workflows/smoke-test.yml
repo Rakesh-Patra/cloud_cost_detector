@@ -12,6 +12,7 @@ on:
       target-url:
         description: 'URL of the environment to run smoke tests against'
         required: true
+        type: string
 
 jobs:
   smoke-test:
@@ -20,25 +21,22 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Ping Frontend Health
         uses: ./.github/actions/health-check
         with:
-          url: ${{ inputs.target-url }}
+          url: "${{ inputs.target-url }}:5173"
           max-attempts: 6
           delay-seconds: 10
-
       - name: Ping Backend Health
         uses: ./.github/actions/health-check
         with:
           # Assumes backend is running either on port 8000 or routed subpath /api
-          url: "${{ inputs.target-url }}:8000/docs"
+          url: "${{ inputs.target-url }}:5173/docs"
           max-attempts: 6
           delay-seconds: 10
-
       - name: Verify Backend API JSON Response
         shell: bash
         run: |
           echo "Verifying API Docs JSON specification endpoint..."
-          curl -f -s "${{ inputs.target-url }}:8000/openapi.json" > /dev/null
+          curl -f -s "${{ inputs.target-url }}:5173/openapi.json" > /dev/null
           echo "API schema check passed successfully."

@@ -3,6 +3,11 @@ name: Docker - Publish
 on:
   workflow_call:
     inputs:
+      registry-username:
+        description: 'Username for Docker registry'
+        required: false
+        type: string
+        default: ''
       registry:
         description: 'Docker registry. Can be "ghcr.io", "docker.io", etc.'
         required: false
@@ -18,20 +23,18 @@ on:
         required: false
         type: string
         default: 'false'
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        type: string
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        type: string
-        default: ''
     secrets:
-      registry-username:
+      AWS_ROLE_TO_ASSUME:
         required: false
-      registry-password:
+      VAULT_ROLE:
+        required: false
+      VAULT_URL:
+        required: false
+      registry_password:
+        required: false
+      aws_access_key_id:
+        required: false
+      aws_secret_access_key:
         required: false
 
 jobs:
@@ -41,42 +44,46 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Fetch Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        continue-on-error: false
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role }}
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
           vault-secrets: |
-            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
-            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY ;
             secret/data/cloud_cost/docker username | REGISTRY_USERNAME ;
-            secret/data/cloud_cost/docker password | REGISTRY_PASSWORD
-
+            secret/data/cloud_cost/docker password | REGISTRY_PASSWORD ;
+            secret/data/cloud_cost/app insforge_project_url | INSFORGE_PROJECT_URL ;
+            secret/data/cloud_cost/app insforge_anon_key | INSFORGE_ANON_KEY
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       # If using AWS credentials from Vault/Secrets
       - name: Configure AWS Credentials (for ECR Login fallback)
         if: ${{ inputs.ecr-login == 'true' }}
         uses: ./.github/actions/aws-auth
         with:
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: 'us-east-1'
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
-
       - name: Log in to Docker Registry
         uses: ./.github/actions/docker-login
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ env.REGISTRY_USERNAME || secrets.registry-username }}
-          password: ${{ env.REGISTRY_PASSWORD || secrets.registry-password }}
+          username: ${{ inputs.registry == 'ghcr.io' && github.actor || env.REGISTRY_USERNAME || inputs.registry-username || github.actor }}
+          password: ${{ inputs.registry == 'ghcr.io' && github.token || env.REGISTRY_PASSWORD || secrets['registry_password'] || github.token }}
           ecr-login: ${{ inputs.ecr-login }}
-
       - name: Define Image Names
         shell: bash
         run: |
@@ -84,19 +91,17 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "BACKEND_IMAGE=${{ inputs.registry }}/${REPO_LOWER}/backend" >> $GITHUB_ENV
           echo "FRONTEND_IMAGE=${{ inputs.registry }}/${REPO_LOWER}/frontend" >> $GITHUB_ENV
-
       - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          file: ./backend/dockerfile
+          file: ./backend/Dockerfile
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:${{ inputs.image-tag }}
             ${{ env.BACKEND_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
       - name: Build and Push Frontend Image
         uses: docker/build-push-action@v5
         with:
@@ -106,5 +111,9 @@ jobs:
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ inputs.image-tag }}
             ${{ env.FRONTEND_IMAGE }}:latest
+          build-args: |
+            VITE_BACKEND_URL=
+            VITE_INSFORGE_PROJECT_URL=${{ env.INSFORGE_PROJECT_URL }}
+            VITE_INSFORGE_ANON_KEY=${{ env.INSFORGE_ANON_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

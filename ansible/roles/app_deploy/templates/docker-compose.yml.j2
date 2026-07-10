@@ -11,8 +11,9 @@ services:
       - .env
     environment:
       - AWS_DEFAULT_REGION=us-east-1
+      - DB_PATH=/app/data/db.sqlite3
     volumes:
-      - backend_data:/app/db.sqlite3
+      - backend_data:/app/data
       - /home/{{ ansible_user }}/.aws:/home/nonroot/.aws:ro
     restart: {{ restart_policy }}
     healthcheck:
@@ -37,6 +38,21 @@ services:
       timeout: 10s
       retries: 3
 
+  vault:
+    image: hashicorp/vault:1.15.0
+    container_name: cloud_cost_vault
+    ports:
+      - "8200:8200"
+    volumes:
+      - {{ app_dir }}/vault/config:/vault/config
+      - vault_data:/vault/file
+    entrypoint: vault server -config=/vault/config/vault-config.hcl
+    restart: {{ restart_policy }}
+    cap_add:
+      - IPC_LOCK
+
 volumes:
   backend_data:
+    driver: local
+  vault_data:
     driver: local

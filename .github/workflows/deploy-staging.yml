@@ -2,40 +2,38 @@ name: Deploy - Staging
 
 on:
   workflow_call:
+    outputs:
+      public_ip:
+        description: 'The public IP of the EC2 instance'
+        value: ${{ jobs.deploy-infrastructure.outputs.public_ip }}
+      security_group_id:
+        description: 'The ID of the EC2 security group'
+        value: ${{ jobs.deploy-infrastructure.outputs.security_group_id }}
     inputs:
       image-tag:
         description: 'Docker image tag to deploy'
         required: true
         type: string
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        type: string
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        type: string
-        default: ''
     secrets:
-      aws-access-key-id:
+      AWS_ROLE_TO_ASSUME:
         required: false
-      aws-secret-access-key:
+      VAULT_ROLE:
+        required: false
+      VAULT_URL:
+        required: false
+      aws_access_key_id:
+        required: false
+      aws_secret_access_key:
+        required: false
+      SSH_PRIVATE_KEY:
         required: false
   workflow_dispatch:
     inputs:
       image-tag:
         description: 'Docker image tag to deploy'
         required: true
+        type: string
         default: 'latest'
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        default: ''
 
 jobs:
   deploy-infrastructure:
@@ -44,59 +42,10 @@ jobs:
     with:
       environment-directory: 'terraform/environment/stag'
       aws-region: 'us-east-1'
-      vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
-      vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
-    secrets:
-      aws-access-key-id: ${{ secrets.aws-access-key-id || secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.aws-secret-access-key || secrets.AWS_SECRET_ACCESS_KEY }}
-
-  get-ec2-ip:
-    name: Get EC2 Public IP
-    needs: deploy-infrastructure
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    outputs:
-      ec2_ip: ${{ steps.terraform-output.outputs.ec2_ip }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Fetch AWS Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
-        uses: ./.github/actions/vault-secrets
-        with:
-          vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
-          vault-secrets: |
-            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
-            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY
-
-      - name: Configure AWS Credentials
-        uses: ./.github/actions/aws-auth
-        with:
-          aws-region: 'us-east-1'
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Initialize Terraform
-        uses: ./.github/actions/terraform-init
-        with:
-          environment-directory: 'terraform/environment/stag'
-
-      - name: Get EC2 Public IP
-        id: terraform-output
-        shell: bash
-        working-directory: terraform/environment/stag
-        run: |
-          EC2_IP=$(terraform output -raw public_ip)
-          echo "ec2_ip=${EC2_IP}" >> $GITHUB_OUTPUT
-          echo "EC2 Public IP: ${EC2_IP}"
-
+    secrets: inherit
   deploy-app:
     name: Deploy Staging Application
-    needs: get-ec2-ip
+    needs: deploy-infrastructure
     runs-on: ubuntu-latest
     environment: staging
     permissions:
@@ -107,12 +56,34 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Configure AWS Credentials
+        if: ${{ needs.deploy-infrastructure.outputs.security_group_id != '' }}
+        uses: ./.github/actions/aws-auth
+        with:
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: 'us-east-1'
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+
+      - name: Whitelist Runner IP
+        id: whitelist
+        if: ${{ needs.deploy-infrastructure.outputs.security_group_id != '' }}
+        uses: ./.github/actions/whitelist-ip
+        with:
+          aws-region: 'us-east-1'
+          security-group-id: ${{ needs.deploy-infrastructure.outputs.security_group_id }}
+          action: 'authorize'
+
       - name: Fetch Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        continue-on-error: false
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url || github.event.inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role || github.event.inputs.vault-role }}
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY ;
             secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;
@@ -122,12 +93,21 @@ jobs:
       - name: Deploy via Ansible
         uses: ./.github/actions/ansible-deploy
         with:
-          ec2-host: ${{ needs.get-ec2-ip.outputs.ec2_ip }}
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
-          image-tag: ${{ inputs.image-tag || github.event.inputs.image-tag }}
+          ec2-host: ${{ needs.deploy-infrastructure.outputs.public_ip }}
+          ssh-private-key: ${{ env.SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
+          image-tag: ${{ inputs.image-tag || inputs.image-tag }}
           docker-repo: ${{ github.repository }}
           ghcr-username: ${{ github.actor }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           gemini-api-key: ${{ env.GEMINI_API_KEY }}
           insforge-project-url: ${{ env.INSFORGE_PROJECT_URL }}
           insforge-anon-key: ${{ env.INSFORGE_ANON_KEY }}
+
+      - name: Revoke Whitelist
+        if: ${{ always() && needs.deploy-infrastructure.outputs.security_group_id != '' && steps.whitelist.outputs.runner-ip != '' }}
+        uses: ./.github/actions/whitelist-ip
+        with:
+          aws-region: 'us-east-1'
+          security-group-id: ${{ needs.deploy-infrastructure.outputs.security_group_id }}
+          ip-address: ${{ steps.whitelist.outputs.runner-ip }}
+          action: 'revoke'

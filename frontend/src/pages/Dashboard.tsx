@@ -24,7 +24,7 @@ export default function Dashboard() {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     };
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
     const response = await fetch(`${backendUrl}${endpoint}`, {
       ...options,
       headers,
@@ -70,50 +70,61 @@ export default function Dashboard() {
     setScanError(false);
     setProgressLogs(['Initializing AWS clients...']);
     
-    const analysisId = crypto.randomUUID();
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
-    const ws = new WebSocket(`${wsUrl}/ws/progress/${analysisId}`);
-    
-    ws.onopen = async () => {
-      console.log('WebSocket connected');
-      try {
-        // Trigger the backend analyze request
-        const data = await apiFetch('/api/analyze', {
-          method: 'POST',
-          body: JSON.stringify({
-            region: selectedRegion,
-            analysis_id: analysisId,
-          }),
+    const analysisId = typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
         });
 
-        // Store the result in localStorage for FinOpsChat accessibility
-        localStorage.setItem('latestScanResult', JSON.stringify(data));
+    // Connect WebSocket for progress updates (best-effort, non-blocking)
+    try {
+      const token = (insforge as any).tokenManager.getAccessToken() || '';
+      const wsUrl = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+      const ws = new WebSocket(`${wsUrl}/ws/progress/${analysisId}?token=${token}`);
+      
+      ws.onopen = () => console.log('WebSocket connected for progress updates');
 
-        // Redirect to report page passing scan results as route state
-        navigate('/report', { state: { scanResult: data } });
-      } catch (err: any) {
-        console.error('Scan API failed:', err);
-        setScanError(true);
-        setProgressLogs((prev) => [...prev, `Analysis failed: ${err.message || 'An error occurred during scanning.'}`]);
-      }
-    };
+      ws.onmessage = (event) => {
+        console.log('WS Progress update:', event.data);
+        setProgressLogs((prev) => [...prev, event.data]);
+        if (event.data.toLowerCase().includes('fail') || event.data.toLowerCase().includes('error')) {
+          setScanError(true);
+        }
+      };
 
-    ws.onmessage = (event) => {
-      console.log('WS Progress update:', event.data);
-      setProgressLogs((prev) => [...prev, event.data]);
-      if (event.data.toLowerCase().includes('fail') || event.data.toLowerCase().includes('error')) {
-        setScanError(true);
-      }
-    };
+      ws.onerror = (err) => {
+        console.error('WS Error (progress updates may be unavailable):', err);
+      };
 
-    ws.onerror = (err) => {
-      console.error('WS Error:', err);
-      // We don't fail immediately because the HTTP POST may still succeed
-    };
+      ws.onclose = () => {
+        console.log('WS Connection closed');
+      };
+    } catch (wsErr) {
+      console.warn('WebSocket connection failed, scan will proceed without live progress:', wsErr);
+    }
 
-    ws.onclose = () => {
-      console.log('WS Connection closed');
-    };
+    // Trigger the backend analyze request immediately (do NOT wait for WebSocket)
+    try {
+      const data = await apiFetch('/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({
+          region: selectedRegion,
+          analysis_id: analysisId,
+        }),
+      });
+
+      // Store the result in localStorage for FinOpsChat accessibility
+      localStorage.setItem('latestScanResult', JSON.stringify(data));
+
+      // Redirect to report page passing scan results as route state
+      navigate('/report', { state: { scanResult: data } });
+    } catch (err: any) {
+      console.error('Scan API failed:', err);
+      setScanError(true);
+      setProgressLogs((prev) => [...prev, `Analysis failed: ${err.message || 'An error occurred during scanning.'}`]);
+    }
   };
 
   return (

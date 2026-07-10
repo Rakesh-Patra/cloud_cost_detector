@@ -24,3 +24,27 @@ variable "project_name" {
   type        = string
   default     = "cloud-cost-detector"
 }
+
+variable "allowed_ssh_cidr_blocks" {
+  description = "Allowed CIDR blocks for SSH access"
+  type        = list(string)
+  default     = ["10.0.0.0/8"]
+}
+
+variable "allowed_vault_cidr_blocks" {
+  description = "Allowed CIDR blocks for Vault access"
+  type        = list(string)
+  default     = ["10.0.0.0/8"]
+}
+
+variable "allowed_backend_cidr_blocks" {
+  description = "Allowed CIDR blocks for backend access"
+  type        = list(string)
+  default     = ["10.0.0.0/8"]
+}
+
+variable "allowed_frontend_cidr_blocks" {
+  description = "Allowed CIDR blocks for frontend access"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}

@@ -2,19 +2,18 @@ name: Infracost
 
 on:
   workflow_call:
-    inputs:
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        type: string
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        type: string
-        default: ''
     secrets:
+      VAULT_ROLE:
+        required: false
+      VAULT_URL:
+        required: false
       INFRACOST_API_KEY:
+        required: false
+      AWS_ROLE_TO_ASSUME:
+        required: false
+      aws_access_key_id:
+        required: false
+      aws_secret_access_key:
         required: false
   workflow_dispatch:
   pull_request:
@@ -29,37 +28,40 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Fetch Infracost Secret from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        continue-on-error: false
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role }}
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
           vault-secrets: |
             secret/data/cloud_cost/ci infracost_key | INFRACOST_API_KEY
-
       - name: Setup Infracost
         uses: infracost/actions/setup@v3
         with:
           api-key: ${{ env.INFRACOST_API_KEY || secrets.INFRACOST_API_KEY }}
-
       - name: Generate Infracost JSON
         shell: bash
         run: |
           infracost breakdown --path=terraform/ --format=json --out-file=/tmp/infracost.json
-          
       - name: Post Infracost Comment
         shell: bash
         run: |
+          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
           infracost comment github --path=/tmp/infracost.json \
                                    --repo=$GITHUB_REPOSITORY \
                                    --github-token=${{ github.token }} \
-                                   --pull-request=${{ github.event.pull_request.number }} \
+                                   --pull-request=$PR_NUMBER \
                                    --behavior=update

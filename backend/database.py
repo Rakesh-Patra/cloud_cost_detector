@@ -6,7 +6,7 @@ from datetime import datetime
 
 logger = logging.getLogger("database")
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "db.sqlite3")
+DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "db.sqlite3"))
 
 def init_db():
     """Initialize SQLite tables for budget configurations and alert logs."""
@@ -145,3 +145,5 @@ def save_alert_log(user_id: str, alert_id: str, date: str, details: dict, status
     except Exception as e:
         logger.error(f"Error saving alert log for user {user_id}: {str(e)}")
         raise e
+
+# Trigger rebuild to resolve temporary Vault seal state

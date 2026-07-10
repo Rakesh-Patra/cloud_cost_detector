@@ -29,12 +29,10 @@
   become: true
 
 - name: Add Docker apt repository
-  ansible.builtin.shell: |
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo ${VERSION_CODENAME}) stable" | \
-    tee /etc/apt/sources.list.d/docker.list > /dev/null
-  args:
-    creates: /etc/apt/sources.list.d/docker.list
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
   become: true
 
 - name: Install Docker Engine and Compose plugin
@@ -86,12 +84,33 @@
     mode: '0644'
   notify: restart application
 
+- name: Create Vault config directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}/vault/config"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+  become: true
+
+- name: Deploy Vault configuration
+  ansible.builtin.copy:
+    src: vault-config.hcl
+    dest: "{{ app_dir }}/vault/config/vault-config.hcl"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+  become: true
+
 - name: Create backend environment file
   ansible.builtin.copy:
     content: |
       GEMINI_API_KEY={{ gemini_api_key }}
       INSFORGE_PROJECT_URL={{ insforge_project_url }}
       INSFORGE_ANON_KEY={{ insforge_anon_key }}
+      AWS_ACCESS_KEY_ID={{ aws_access_key_id }}
+      AWS_SECRET_ACCESS_KEY={{ aws_secret_access_key }}
+      AWS_DEFAULT_REGION={{ aws_region }}
     dest: "{{ app_dir }}/.env"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
