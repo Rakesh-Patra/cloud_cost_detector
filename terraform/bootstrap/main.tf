@@ -14,7 +14,7 @@ provider "aws" {
 
 # S3 bucket for Terraform state
 resource "aws_s3_bucket" "tfstate" {
-  bucket = "cloud-cost-detector-tfstate"
+  bucket = "cloud-cost-detector-tfstate-rakesh-patra"
 
   # Prevent accidental deletion
   lifecycle {

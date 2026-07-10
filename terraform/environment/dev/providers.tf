@@ -8,7 +8,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket = "cloud-cost-detector-tfstate"
+    bucket = "cloud-cost-detector-tfstate-rakesh-patra"
     key    = "dev/terraform.tfstate"
     region = "us-east-1"
   }
