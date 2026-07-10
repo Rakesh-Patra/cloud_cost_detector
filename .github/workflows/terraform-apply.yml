@@ -21,6 +21,9 @@ on:
       public_ip:
         description: 'The public IP of the provisioned EC2 instance'
         value: ${{ jobs.apply.outputs.public_ip }}
+      security_group_id:
+        description: 'The ID of the provisioned security group'
+        value: ${{ jobs.apply.outputs.security_group_id }}
     secrets:
       AWS_ROLE_TO_ASSUME:
         required: false
@@ -39,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       public_ip: ${{ steps.get-output.outputs.public_ip }}
+      security_group_id: ${{ steps.get-output.outputs.security_group_id }}
     permissions:
       id-token: write
       contents: read
@@ -67,3 +71,4 @@ jobs:
         working-directory: ${{ inputs.environment-directory }}
         run: |
           echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+          echo "security_group_id=$(terraform output -raw security_group_id)" >> $GITHUB_OUTPUT

@@ -6,6 +6,9 @@ on:
       public_ip:
         description: 'The public IP of the EC2 instance'
         value: ${{ jobs.deploy-infrastructure.outputs.public_ip }}
+      security_group_id:
+        description: 'The ID of the EC2 security group'
+        value: ${{ jobs.deploy-infrastructure.outputs.security_group_id }}
     inputs:
       image-tag:
         description: 'Docker image tag to deploy'
@@ -21,6 +24,8 @@ on:
       aws_access_key_id:
         required: false
       aws_secret_access_key:
+        required: false
+      SSH_PRIVATE_KEY:
         required: false
   workflow_dispatch:
     inputs:
@@ -49,6 +54,25 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        if: ${{ needs.deploy-infrastructure.outputs.security_group_id != '' }}
+        uses: ./.github/actions/aws-auth
+        with:
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: 'us-east-1'
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+
+      - name: Whitelist Runner IP
+        id: whitelist
+        if: ${{ needs.deploy-infrastructure.outputs.security_group_id != '' }}
+        uses: ./.github/actions/whitelist-ip
+        with:
+          aws-region: 'us-east-1'
+          security-group-id: ${{ needs.deploy-infrastructure.outputs.security_group_id }}
+          action: 'authorize'
+
       - name: Fetch Secrets from Vault
         continue-on-error: false
         env:
@@ -64,6 +88,7 @@ jobs:
             secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;
             secret/data/cloud_cost/app insforge_project_url | INSFORGE_PROJECT_URL ;
             secret/data/cloud_cost/app insforge_anon_key | INSFORGE_ANON_KEY
+
       - name: Deploy via Ansible
         uses: ./.github/actions/ansible-deploy
         with:
@@ -76,3 +101,12 @@ jobs:
           gemini-api-key: ${{ env.GEMINI_API_KEY }}
           insforge-project-url: ${{ env.INSFORGE_PROJECT_URL }}
           insforge-anon-key: ${{ env.INSFORGE_ANON_KEY }}
+
+      - name: Revoke Whitelist
+        if: ${{ always() && needs.deploy-infrastructure.outputs.security_group_id != '' && steps.whitelist.outputs.runner-ip != '' }}
+        uses: ./.github/actions/whitelist-ip
+        with:
+          aws-region: 'us-east-1'
+          security-group-id: ${{ needs.deploy-infrastructure.outputs.security_group_id }}
+          ip-address: ${{ steps.whitelist.outputs.runner-ip }}
+          action: 'revoke'

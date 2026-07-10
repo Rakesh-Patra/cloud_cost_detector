@@ -1,0 +1,97 @@
+name: 'Dynamic Security Group Whitelist'
+description: 'Temporarily authorize or revoke a public IP in an AWS Security Group for Vault and SSH'
+inputs:
+  aws-region:
+    description: 'AWS Region'
+    required: false
+    default: 'us-east-1'
+  security-group-id:
+    description: 'The AWS Security Group ID'
+    required: true
+  action:
+    description: 'Action to perform: authorize or revoke'
+    required: true
+  ip-address:
+    description: 'Specific IP address to authorize/revoke. If blank during authorize, fetches runner IP.'
+    required: false
+    default: ''
+outputs:
+  runner-ip:
+    description: 'The IP address that was authorized/revoked'
+    value: ${{ steps.process.outputs.runner_ip }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Process Security Group Rules
+      id: process
+      shell: bash
+      run: |
+        REGION="${{ inputs.aws-region }}"
+        SG_ID="${{ inputs.security-group-id }}"
+        ACTION="${{ inputs.action }}"
+        IP="${{ inputs.ip-address }}"
+
+        # Validate inputs
+        if [ -z "$SG_ID" ]; then
+          echo "::error::Security Group ID is required but was empty."
+          exit 1
+        fi
+
+        if [ -z "$IP" ]; then
+          echo "Fetching runner public IP..."
+          IP=$(curl -s --max-time 10 https://api.ipify.org || curl -s --max-time 10 https://ifconfig.me || curl -s --max-time 10 https://icanhazip.com)
+          if [ -z "$IP" ]; then
+            echo "::error::Failed to fetch runner public IP address."
+            exit 1
+          fi
+        fi
+        echo "Runner IP to process: $IP"
+        echo "runner_ip=$IP" >> $GITHUB_OUTPUT
+
+        PORTS=(8200 22)
+
+        for PORT in "${PORTS[@]}"; do
+          if [ "$ACTION" = "authorize" ]; then
+            echo "Authorizing TCP port $PORT for IP $IP/32 in SG $SG_ID..."
+            stderr=$(aws ec2 authorize-security-group-ingress \
+              --group-id "$SG_ID" \
+              --protocol tcp \
+              --port "$PORT" \
+              --cidr "$IP/32" \
+              --region "$REGION" 2>&1)
+            status=$?
+            if [ $status -ne 0 ]; then
+              if [[ "$stderr" == *"InvalidPermission.Duplicate"* ]]; then
+                echo "Rule for port $PORT and IP $IP already exists. Continuing."
+              else
+                echo "::error::Failed to authorize port $PORT: $stderr"
+                exit $status
+              fi
+            else
+              echo "Successfully authorized port $PORT."
+            fi
+          elif [ "$ACTION" = "revoke" ]; then
+            echo "Revoking TCP port $PORT for IP $IP/32 in SG $SG_ID..."
+            stderr=$(aws ec2 revoke-security-group-ingress \
+              --group-id "$SG_ID" \
+              --protocol tcp \
+              --port "$PORT" \
+              --cidr "$IP/32" \
+              --region "$REGION" 2>&1)
+            status=$?
+            if [ $status -ne 0 ]; then
+              if [[ "$stderr" == *"InvalidPermission.NotFound"* ]]; then
+                echo "Rule for port $PORT and IP $IP not found (possibly already revoked). Continuing."
+              else
+                echo "::error::Failed to revoke port $PORT: $stderr"
+                exit $status
+              fi
+            else
+              echo "Successfully revoked port $PORT."
+            fi
+          else
+            echo "::error::Invalid action specified: $ACTION"
+            exit 1
+          fi
+        done
