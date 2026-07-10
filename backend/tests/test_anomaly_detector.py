@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from anomaly_detector import detect_cost_anomalies, send_alert, send_email_alert
 
 def test_detect_cost_anomalies_insufficient_data():

@@ -6,7 +6,7 @@ from aws_scanner import (
     scan_all_resources,
     execute_remediation,
     AWSCredentialException,
-    AWSRegionException
+    AWSScanException
 )
 
 @patch("boto3.client")
@@ -169,16 +169,6 @@ def test_execute_remediation_stop_instance(mock_session_class):
     assert "stopped EC2 instance" in result["message"]
     mock_ec2.stop_instances.assert_called_with(InstanceIds=["i-123"])
 
-from aws_scanner import (
-    list_aws_regions,
-    scan_all_resources,
-    execute_remediation,
-    AWSCredentialException,
-    AWSRegionException,
-    AWSScanException
-)
-
-# ...
 def test_execute_remediation_invalid_issue():
     with pytest.raises(AWSScanException) as exc_info:
         execute_remediation("us-east-1", "res-123", "Unsupported Issue Name")
