@@ -63,6 +63,7 @@ jobs:
         with:
           ref: ${{ inputs.target-tag }}
       - name: Fetch Secrets from Vault
+        continue-on-error: true
         env:
           VAULT_URL: ${{ secrets.VAULT_URL }}
           VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
