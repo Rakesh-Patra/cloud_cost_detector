@@ -145,3 +145,5 @@ def save_alert_log(user_id: str, alert_id: str, date: str, details: dict, status
     except Exception as e:
         logger.error(f"Error saving alert log for user {user_id}: {str(e)}")
         raise e
+
+# Trigger rebuild to resolve temporary Vault seal state
