@@ -32,6 +32,10 @@ on:
         required: false
       registry_password:
         required: false
+      aws_access_key_id:
+        required: false
+      aws_secret_access_key:
+        required: false
 
 jobs:
   publish:
@@ -54,6 +58,9 @@ jobs:
         with:
           vault-url: ${{ env.VAULT_URL }}
           vault-role: ${{ env.VAULT_ROLE }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
           vault-secrets: |
             secret/data/cloud_cost/docker username | REGISTRY_USERNAME ;
             secret/data/cloud_cost/docker password | REGISTRY_PASSWORD ;
