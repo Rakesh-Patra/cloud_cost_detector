@@ -70,7 +70,7 @@ jobs:
         uses: ./.github/actions/ansible-deploy
         with:
           ec2-host: ${{ needs.deploy-infrastructure.outputs.public_ip }}
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ env.SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
           image-tag: ${{ inputs.image-tag || inputs.image-tag }}
           docker-repo: ${{ github.repository }}
           ghcr-username: ${{ github.actor }}
