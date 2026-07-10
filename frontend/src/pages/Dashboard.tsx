@@ -80,8 +80,9 @@ export default function Dashboard() {
 
     // Connect WebSocket for progress updates (best-effort, non-blocking)
     try {
+      const token = (insforge as any).tokenManager.getAccessToken() || '';
       const wsUrl = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
-      const ws = new WebSocket(`${wsUrl}/ws/progress/${analysisId}`);
+      const ws = new WebSocket(`${wsUrl}/ws/progress/${analysisId}?token=${token}`);
       
       ws.onopen = () => console.log('WebSocket connected for progress updates');
 

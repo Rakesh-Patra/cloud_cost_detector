@@ -3,7 +3,7 @@ import logging
 import uuid
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Literal
 import httpx
 from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect, Depends, Header
@@ -44,10 +44,17 @@ app = FastAPI(
 )
 
 # Configure CORS
+allowed_origins_str = os.environ.get("ALLOWED_ORIGINS", "")
+if allowed_origins_str:
+    origins = [orig.strip() for orig in allowed_origins_str.split(",") if orig.strip()]
+else:
+    # Default fallback for development
+    origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=origins,
+    allow_credentials=True if "*" not in origins else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -195,7 +202,7 @@ async def get_current_user(authorization: str = Header(..., description="InsForg
     
 
 @app.get("/api/regions", status_code=status.HTTP_200_OK)
-async def get_regions():
+async def get_regions(user: dict = Depends(get_current_user)):
     """
     Retrieve a list of active AWS regions.
     Raises 401/400/429/500 if the AWS API calls fail.
@@ -215,7 +222,39 @@ async def get_regions():
 
 
 @app.websocket("/ws/progress/{analysis_id}")
-async def websocket_endpoint(websocket: WebSocket, analysis_id: str):
+async def websocket_endpoint(websocket: WebSocket, analysis_id: str, token: str | None = None):
+    # Verify token
+    if not token:
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+        
+    project_url = os.environ.get("INSFORGE_PROJECT_URL")
+    anon_key = os.environ.get("INSFORGE_ANON_KEY")
+    if not project_url or not anon_key:
+        await websocket.accept()
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        return
+        
+    url = f"{project_url.rstrip('/')}/api/auth/sessions/current"
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {token}"
+    }
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, timeout=10.0)
+            if response.status_code != 200:
+                await websocket.accept()
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+        except Exception as e:
+            logger.error(f"WebSocket auth failed: {e}")
+            await websocket.accept()
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+            return
+
     await manager.connect(websocket, analysis_id)
     try:
         # Keep connection open. WebSockets expect us to read from them or wait
@@ -518,9 +557,42 @@ async def run_scheduled_anomaly_scan():
 
 async def daily_anomaly_scanner_loop():
     logger.info("Starting daily anomaly scanner background scheduler loop")
+    
+    # Check if we should run an initial scan on startup
+    try:
+        import sqlite3
+        conn = sqlite3.connect(database.DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT created_at FROM alert_logs ORDER BY created_at DESC LIMIT 1")
+        row = cursor.fetchone()
+        conn.close()
+        
+        should_run_now = True
+        if row:
+            last_run_str = row[0].rstrip('Z').split('.')[0]
+            last_run = datetime.strptime(last_run_str, "%Y-%m-%dT%H:%M:%S")
+            if datetime.utcnow() - last_run < timedelta(hours=24):
+                should_run_now = False
+                logger.info(f"Last anomaly scan was run at {row[0]}, which is less than 24 hours ago. Skipping initial startup scan.")
+        
+        if should_run_now:
+            logger.info("No recent scans found or last scan is older than 24 hours. Running startup anomaly scan.")
+            await run_scheduled_anomaly_scan()
+    except Exception as e:
+        logger.error(f"Error checking last scan run on startup: {str(e)}")
+        # Run anyway on error to be safe
+        await run_scheduled_anomaly_scan()
+
     while True:
         try:
-            await asyncio.sleep(24 * 60 * 60)
+            # Calculate sleep seconds to align with UTC midnight
+            now = datetime.utcnow()
+            tomorrow = now + timedelta(days=1)
+            next_midnight = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0)
+            sleep_seconds = (next_midnight - now).total_seconds()
+            
+            logger.info(f"Next scheduled anomaly scan in {sleep_seconds:.1f} seconds (at UTC midnight {next_midnight.strftime('%Y-%m-%d %H:%M:%S')})")
+            await asyncio.sleep(sleep_seconds)
             await run_scheduled_anomaly_scan()
         except asyncio.CancelledError:
             logger.info("Daily anomaly scanner scheduler loop cancelled")
@@ -528,6 +600,7 @@ async def daily_anomaly_scanner_loop():
         except Exception as e:
             logger.error(f"Error in anomaly scanner scheduler loop: {str(e)}")
             await asyncio.sleep(300)
+
 
 
 @app.get("/api/budgets", status_code=status.HTTP_200_OK)
@@ -675,4 +748,6 @@ async def trigger_budgets_scan(user: dict = Depends(get_current_user)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)  # nosec B104
+    env_mode = os.getenv("ENV", "prod").lower()
+    should_reload = env_mode in ("dev", "development")
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=should_reload)  # nosec B104

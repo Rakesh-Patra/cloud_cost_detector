@@ -27,9 +27,10 @@ jobs:
           fi
       - name: Run Backend Tests
         shell: bash
+        working-directory: ./backend
         run: |
-          # Add actual backend tests here
-          echo "No unit tests defined for python backend yet."
+          pip install pytest pytest-asyncio pytest-cov
+          python -m pytest tests/ -v --cov=.
   frontend-ci:
     name: Frontend CI
     runs-on: ubuntu-latest
