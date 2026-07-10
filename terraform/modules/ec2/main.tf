@@ -64,6 +64,32 @@ resource "aws_key_pair" "app" {
   public_key      = file("${path.module}/../../terrakey.pub")
 }
 
+resource "aws_iam_role" "app" {
+  name_prefix = "${var.project_name}-${var.environment}-role-"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "readonly" {
+  role       = aws_iam_role.app.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
+resource "aws_iam_instance_profile" "app" {
+  name_prefix = "${var.project_name}-${var.environment}-profile-"
+  role        = aws_iam_role.app.name
+}
+
 resource "aws_instance" "app" {
   # checkov:skip=CKV_AWS_88:Public IP is required for GitHub Actions runner deployment and public testing
   # checkov:skip=CKV_AWS_135:EBS optimized is not required for dev/staging workloads
@@ -71,6 +97,13 @@ resource "aws_instance" "app" {
   instance_type          = var.instance_type
   key_name               = aws_key_pair.app.key_name
   vpc_security_group_ids = [aws_security_group.ec2.id]
+  iam_instance_profile   = aws_iam_instance_profile.app.name
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_put_response_hop_limit = 2
+    http_tokens                 = "required"
+  }
 
   root_block_device {
     volume_size           = 20
