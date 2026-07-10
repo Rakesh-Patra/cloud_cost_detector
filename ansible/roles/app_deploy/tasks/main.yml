@@ -84,6 +84,24 @@
     mode: '0644'
   notify: restart application
 
+- name: Create Vault config directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}/vault/config"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+  become: true
+
+- name: Deploy Vault configuration
+  ansible.builtin.copy:
+    src: vault-config.hcl
+    dest: "{{ app_dir }}/vault/config/vault-config.hcl"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+  become: true
+
 - name: Create backend environment file
   ansible.builtin.copy:
     content: |
