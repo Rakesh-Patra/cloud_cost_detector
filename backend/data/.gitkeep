@@ -1,0 +1,1 @@
+# Keep this directory in git to allow mounting for SQLite database storage in local development.

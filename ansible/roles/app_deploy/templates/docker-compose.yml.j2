@@ -11,8 +11,9 @@ services:
       - .env
     environment:
       - AWS_DEFAULT_REGION=us-east-1
+      - DB_PATH=/app/data/db.sqlite3
     volumes:
-      - backend_data:/app/db.sqlite3
+      - backend_data:/app/data
       - /home/{{ ansible_user }}/.aws:/home/nonroot/.aws:ro
     restart: {{ restart_policy }}
     healthcheck:
