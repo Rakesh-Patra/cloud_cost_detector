@@ -28,6 +28,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Fetch Infracost Secret from Vault
+        continue-on-error: false
         env:
           VAULT_URL: ${{ secrets.VAULT_URL }}
           VAULT_ROLE: ${{ secrets.VAULT_ROLE }}

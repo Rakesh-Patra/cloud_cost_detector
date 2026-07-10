@@ -24,7 +24,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
       - name: Fetch Secrets from Vault
-        continue-on-error: true
+        continue-on-error: false
         env:
           VAULT_URL: ${{ secrets.VAULT_URL }}
           VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
@@ -34,8 +34,6 @@ jobs:
           vault-url: ${{ env.VAULT_URL }}
           vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
-            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
-            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY ;
             secret/data/cloud_cost/ci slack_webhook | SLACK_WEBHOOK_URL
       - name: Configure AWS Credentials
         uses: ./.github/actions/aws-auth
