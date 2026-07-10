@@ -1,7 +1,7 @@
 resource "aws_security_group" "ec2" {
   # checkov:skip=CKV_AWS_24:Allow SSH from internet for dynamic GitHub Actions runner IPs
   # checkov:skip=CKV_AWS_260:Allow ingress from internet for testing public services
-  name_prefix = "${var.project_name}-${var.environment}-sg-"
+  name = "${var.project_name}-${var.environment}-sg"
   description = "Security group for ${var.project_name} in ${var.environment}"
 
   ingress {
@@ -60,7 +60,7 @@ resource "aws_security_group" "ec2" {
 }
 
 resource "aws_key_pair" "app" {
-  key_name_prefix = "${var.key_name}-${var.environment}-"
+  key_name = "${var.key_name}-${var.environment}"
   public_key      = file("${path.module}/../../terrakey.pub")
 }
 
