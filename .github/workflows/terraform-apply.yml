@@ -70,5 +70,22 @@ jobs:
         shell: bash
         working-directory: ${{ inputs.environment-directory }}
         run: |
-          echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+          TF_IP=$(terraform output -raw public_ip 2>/dev/null || echo "")
+          INSTANCE_ID=$(terraform output -raw instance_id 2>/dev/null || echo "")
+
+          # Try to get Elastic IP associated with the instance (more reliable than terraform output)
+          if [ -n "$INSTANCE_ID" ]; then
+            EIP=$(aws ec2 describe-addresses --region us-east-1 \
+              --filters "Name=instance-id,Values=$INSTANCE_ID" \
+              --query "Addresses[0].PublicIp" --output text 2>/dev/null || echo "")
+            if [ -n "$EIP" ] && [ "$EIP" != "None" ]; then
+              echo "Using Elastic IP: $EIP"
+              echo "public_ip=$EIP" >> $GITHUB_OUTPUT
+            else
+              echo "Using Terraform output IP: $TF_IP"
+              echo "public_ip=$TF_IP" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "public_ip=$TF_IP" >> $GITHUB_OUTPUT
+          fi
           echo "security_group_id=$(terraform output -raw security_group_id)" >> $GITHUB_OUTPUT
