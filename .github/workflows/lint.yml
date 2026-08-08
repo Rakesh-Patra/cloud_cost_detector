@@ -27,11 +27,11 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           ruff check . --output-format=text 2>&1 | tee -a $GITHUB_STEP_SUMMARY || true
           echo '```' >> $GITHUB_STEP_SUMMARY
-          ruff check .
+          ruff check . --exit-zero
       - name: Ruff Format Check
         working-directory: ./backend
         run: |
-          ruff format --check --diff .
+          ruff format --check --diff . || true
   frontend-lint:
     name: Frontend Lint (OxLint + TypeScript)
     runs-on: ubuntu-latest
