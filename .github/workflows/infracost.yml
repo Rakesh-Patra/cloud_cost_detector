@@ -24,6 +24,8 @@ jobs:
   infracost:
     name: Infracost Analysis
     runs-on: ubuntu-latest
+    env:
+      INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
     permissions:
       id-token: write
       contents: read
@@ -49,17 +51,17 @@ jobs:
           vault-secrets: |
             secret/data/cloud_cost/ci infracost_key | INFRACOST_API_KEY
       - name: Setup Infracost
-        if: ${{ env.INFRACOST_API_KEY != '' || secrets.INFRACOST_API_KEY != '' }}
+        if: ${{ env.INFRACOST_API_KEY != '' }}
         uses: infracost/actions/setup@v3
         with:
-          api-key: ${{ env.INFRACOST_API_KEY || secrets.INFRACOST_API_KEY }}
+          api-key: ${{ env.INFRACOST_API_KEY }}
       - name: Generate Infracost JSON
-        if: ${{ env.INFRACOST_API_KEY != '' || secrets.INFRACOST_API_KEY != '' }}
+        if: ${{ env.INFRACOST_API_KEY != '' }}
         shell: bash
         run: |
           infracost breakdown --path=terraform/ --format=json --out-file=/tmp/infracost.json
       - name: Post Infracost Comment
-        if: ${{ (env.INFRACOST_API_KEY != '' || secrets.INFRACOST_API_KEY != '') && github.event_name == 'pull_request' }}
+        if: ${{ env.INFRACOST_API_KEY != '' && github.event_name == 'pull_request' }}
         shell: bash
         run: |
           PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
