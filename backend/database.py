@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger("database")
 
-DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "db.sqlite3"))
+DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "data", "db.sqlite3"))
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 def get_connection():
@@ -18,6 +18,9 @@ def get_connection():
         except Exception as e:
             logger.warning(f"Failed to connect to PostgreSQL via DATABASE_URL: {e}. Falling back to SQLite.")
     
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir and DB_PATH != ":memory:":
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     return conn, "sqlite"
 

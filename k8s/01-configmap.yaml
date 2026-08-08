@@ -11,3 +11,4 @@ data:
   ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:8080"
   VITE_BACKEND_URL: "http://cloud-cost-backend-service:8000"
   VITE_INSFORGE_PROJECT_URL: "https://scf29qqy.us-east.insforge.app"
+  DB_PATH: "/app/data/db.sqlite3"
