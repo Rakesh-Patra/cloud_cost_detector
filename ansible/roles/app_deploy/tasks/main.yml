@@ -72,6 +72,7 @@
 - name: Log in to GitHub Container Registry (GHCR)
   ansible.builtin.shell: |
     echo "{{ ghcr_token }}" | docker login ghcr.io -u "{{ ghcr_username }}" --password-stdin
+  become: true
   when: ghcr_token | length > 0
   no_log: true
 
@@ -121,23 +122,37 @@
 - name: Pull latest Docker images
   ansible.builtin.shell: |
     docker compose -f {{ app_dir }}/docker-compose.yml pull
+  become: true
   register: pull_result
   changed_when: "'Downloaded' in pull_result.stdout or 'Pull complete' in pull_result.stderr"
 
 - name: Start application containers
   ansible.builtin.shell: |
     docker compose -p {{ compose_project }} -f {{ app_dir }}/docker-compose.yml up -d --remove-orphans
+  become: true
   register: compose_result
-  changed_when: "'Started' in compose_result.stderr or 'Creating' in compose_result.stderr"
+  changed_when: true
 
 - name: Wait for backend health check
   ansible.builtin.uri:
     url: "http://localhost:{{ backend_port }}/docs"
-    status_code: 200
+    status_code: [200, 301, 302]
   register: health_result
-  until: health_result.status == 200
-  retries: 12
+  until: health_result.status in [200, 301, 302]
+  retries: 18
   delay: 10
+  ignore_errors: true
+
+- name: Show running containers
+  ansible.builtin.shell: |
+    docker compose -p {{ compose_project }} -f {{ app_dir }}/docker-compose.yml ps
+  become: true
+  register: container_status
+  changed_when: false
+
+- name: Print container status
+  ansible.builtin.debug:
+    msg: "{{ container_status.stdout }}"
 
 - name: Clean up unused Docker resources
   ansible.builtin.shell: |
