@@ -136,45 +136,86 @@ Once analysis completes, the app displays dynamic, interactive cards for cost-sa
 
 ---
 
-## 🛠️ Getting Started (Prerequisites)
+## 🛠️ Prerequisites & Setup Requirements
 
-Before running the application, make sure you have:
+Before pulling and running the repository on your laptop, ensure you have:
 
-1. **Docker & Docker Compose** installed.
-2. **AWS Credentials** configured locally (in `~/.aws/credentials`) or environment variables ready.
-3. **Google Gemini API Key** to power the AI Cost Analysis and Chat Assistant.
-4. **InsForge Project Credentials** to connect the database and user session authentication.
+1. **Git** ([Download Git](https://git-scm.com/))
+2. **Docker & Docker Compose** ([Download Docker Desktop](https://www.docker.com/products/docker-desktop/))
+3. **Google Gemini API Key** ([Get free key from Google AI Studio](https://aistudio.google.com/))
+4. **AWS Account Credentials** (Access Key & Secret Key with read permissions for EC2, EBS, RDS)
+5. **InsForge Project Credentials** (or your preferred auth endpoint)
 
 ---
 
-## 🐳 Quick Start: Running with Docker Compose (Recommended)
+## ⚡ Quick Start: 3-Step Setup (Run with Docker)
 
-The easiest way to start both services locally is using Docker Compose:
+The easiest way to run the entire platform locally is with Docker Compose.
 
-1. Create a configuration env file for the backend:
-   Copy [backend/.env.example](file:///c:/ai_log/cloud_cost/backend/.env.example) to `backend/.env` and update the credentials:
+### Step 1: Clone the Repository
 
-   ```bash
-   cp backend/.env.example backend/.env
-   ```
+Open your terminal or command prompt and clone the repository:
 
-   Edit the values:
+```bash
+git clone https://github.com/Rakesh-Patra/cloud_cost_detector.git
+cd cloud_cost_detector
+```
 
-   ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
-   INSFORGE_PROJECT_URL=your_insforge_project_url_here
-   INSFORGE_ANON_KEY=your_insforge_anon_key_here
-   ```
+### Step 2: Configure Environment Variables
 
-2. Build and launch the containers:
+Create the `.env` configuration file for the backend:
 
-   ```bash
-   docker-compose up --build
-   ```
+```bash
+# On Linux / macOS / Git Bash:
+cp backend/.env.example backend/.env
 
-3. Access the platform:
-   - **Frontend Interface:** <http://localhost:5173> (mapped to `8080` internally via Nginx)
-   - **Backend API Docs:** <http://localhost:8000/docs> (Swagger UI)
+# On Windows (PowerShell):
+Copy-Item backend\.env.example backend\.env
+```
+
+Open `backend/.env` in your text editor and fill in your credentials:
+
+```env
+# Google Gemini API Key (Required for AI Cost Audits & FinOps Chat)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# InsForge Cloud Database & Authentication Credentials
+INSFORGE_PROJECT_URL=https://your-project.us-east.insforge.app/
+INSFORGE_ANON_KEY=your_insforge_anon_key_here
+
+# AWS Access Credentials (Required for Scanning AWS Resources)
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_DEFAULT_REGION=us-east-1
+```
+
+> 💡 **Note for AWS credentials:** Alternatively, if you already have the AWS CLI configured on your computer (`aws configure`), Docker Compose will automatically mount your local `~/.aws/credentials` file.
+
+### Step 3: Build & Launch
+
+Start all services (Frontend, Backend, and Vault) with a single command:
+
+```bash
+docker compose up --build
+```
+
+---
+
+## 🌐 Accessing the Local Platform
+
+Once the containers start up, open your web browser to access the application:
+
+| Component | URL | Details |
+|---|---|---|
+| 💻 **Frontend Web UI** | <http://localhost:5173> (or <http://localhost:8080>) | React + Vite UI dashboard |
+| ⚡ **Backend API Docs** | <http://localhost:8000/docs> | Interactive Swagger API documentation |
+| 🔐 **HashiCorp Vault UI** | <http://localhost:8200/ui> | Secrets manager (Root Token: `root` or `hvs...`) |
+
+To stop the platform at any time, press `Ctrl + C` in your terminal, or run:
+
+```bash
+docker compose down
+```
 
 ---
 
