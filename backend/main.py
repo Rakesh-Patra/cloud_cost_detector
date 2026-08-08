@@ -325,7 +325,10 @@ async def analyze_region(payload: AnalyzeRequest, user: dict = Depends(get_curre
     try:
         # Step 1: Initializing clients
         await manager.broadcast(analysis_id, "Initializing AWS clients...")
-        await db_client.create_analysis(analysis_id, region, token=user["token"])
+        try:
+            await db_client.create_analysis(analysis_id, region, token=user["token"])
+        except Exception as db_err:
+            logger.warning(f"InsForge create_analysis notice: {db_err}")
         
         # Step 2: Scanning resources
         await manager.broadcast(analysis_id, f"Scanning EC2, EBS, and RDS resources in {region}...")
@@ -336,20 +339,23 @@ async def analyze_region(payload: AnalyzeRequest, user: dict = Depends(get_curre
         analysis = analyze_costs(resources)
         
         # Step 4: Persisting results
-        await manager.broadcast(analysis_id, "Persisting audit metrics to InsForge Cloud...")
+        await manager.broadcast(analysis_id, "Persisting audit metrics...")
         
         issues_found = len(analysis.get('recommendations', []))
         total_savings = sum(item.get('estimated_savings', 0.0) for item in analysis.get('recommendations', []))
         estimated_savings = f"${total_savings:.2f}"
         
-        await db_client.update_analysis_success(
-            analysis_id=analysis_id,
-            resources_scanned=len(resources),
-            issues_found=issues_found,
-            estimated_savings=estimated_savings,
-            analysis_result=analysis,
-            token=user["token"]
-        )
+        try:
+            await db_client.update_analysis_success(
+                analysis_id=analysis_id,
+                resources_scanned=len(resources),
+                issues_found=issues_found,
+                estimated_savings=estimated_savings,
+                analysis_result=analysis,
+                token=user["token"]
+            )
+        except Exception as db_err:
+            logger.warning(f"InsForge update_analysis_success notice: {db_err}")
         
         # Step 5: Complete
         await manager.broadcast(analysis_id, "Analysis complete")
