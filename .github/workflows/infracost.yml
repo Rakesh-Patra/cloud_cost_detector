@@ -46,8 +46,8 @@ jobs:
           vault-url: ${{ env.VAULT_URL }}
           vault-role: ${{ env.VAULT_ROLE }}
           aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-access-key-id: ${{ secrets.aws_access_key_id }}
-          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID || secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY || secrets.aws_secret_access_key }}
           vault-secrets: |
             secret/data/cloud_cost/ci infracost_key | INFRACOST_API_KEY
       - name: Setup Infracost

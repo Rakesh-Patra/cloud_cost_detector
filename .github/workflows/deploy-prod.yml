@@ -75,7 +75,7 @@ jobs:
           action: 'authorize'
 
       - name: Fetch Secrets from Vault
-        continue-on-error: false
+        continue-on-error: true
         env:
           VAULT_URL: ${{ secrets.VAULT_URL }}
           VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
@@ -84,6 +84,9 @@ jobs:
         with:
           vault-url: ${{ env.VAULT_URL }}
           vault-role: ${{ env.VAULT_ROLE }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID || secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY || secrets.aws_secret_access_key }}
           vault-secrets: |
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY ;
             secret/data/cloud_cost/app gemini_api_key | GEMINI_API_KEY ;
