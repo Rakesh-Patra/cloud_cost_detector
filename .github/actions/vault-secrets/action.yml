@@ -31,6 +31,11 @@ inputs:
     required: false
     default: 'us-east-1'
 
+  vault-security-group-id:
+    description: 'Security Group ID of the Vault server (optional)'
+    required: false
+    default: ''
+
 runs:
   using: 'composite'
   steps:
@@ -49,21 +54,36 @@ runs:
       if: ${{ inputs.aws-role-to-assume != '' || (inputs.aws-access-key-id != '' && inputs.aws-secret-access-key != '') }}
       shell: bash
       run: |
-        VAULT_ADDR="${{ inputs.vault-url }}"
-        VAULT_HOST=$(echo "$VAULT_ADDR" | sed -E 's|https?://([^:/]+).*|\1|')
-        echo "Vault host extracted: $VAULT_HOST"
-        
-        if [[ "$VAULT_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "Querying security group for IP $VAULT_HOST..."
-          SG_ID=$(aws ec2 describe-instances --region "${{ inputs.aws-region }}" --filters "Name=ip-address,Values=$VAULT_HOST" --query "Reservations[*].Instances[*].SecurityGroups[0].GroupId" --output text)
+        SG_ID="${{ inputs.vault-security-group-id }}"
+        if [ -n "$SG_ID" ] && [ "$SG_ID" != "None" ]; then
+          echo "Using explicitly configured Security Group ID: $SG_ID"
         else
-          echo "Vault host is not a direct IP. Attempting DNS resolution..."
-          RESOLVED_IP=$(dig +short "$VAULT_HOST" | tail -n1 || nslookup "$VAULT_HOST" | awk '/Address:/ {print $2}' | tail -n1)
-          if [ -n "$RESOLVED_IP" ]; then
-            echo "Resolved IP: $RESOLVED_IP"
-            SG_ID=$(aws ec2 describe-instances --region "${{ inputs.aws-region }}" --filters "Name=ip-address,Values=$RESOLVED_IP" --query "Reservations[*].Instances[*].SecurityGroups[0].GroupId" --output text)
+          VAULT_ADDR="${{ inputs.vault-url }}"
+          VAULT_HOST=$(echo "$VAULT_ADDR" | sed -E 's|https?://([^:/]+).*|\1|')
+          echo "Vault host extracted: $VAULT_HOST"
+          
+          if [[ "$VAULT_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Querying security group for IP $VAULT_HOST..."
+            SG_ID=$(aws ec2 describe-instances --region "${{ inputs.aws-region }}" --filters "Name=ip-address,Values=$VAULT_HOST" --query "Reservations[*].Instances[*].SecurityGroups[0].GroupId" --output text)
+            if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+              SG_ID=$(aws ec2 describe-instances --region "${{ inputs.aws-region }}" --filters "Name=network-interface.addresses.association.public-ip,Values=$VAULT_HOST" --query "Reservations[*].Instances[*].SecurityGroups[0].GroupId" --output text)
+            fi
+            if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+              SG_ID=$(aws ec2 describe-security-groups --region "${{ inputs.aws-region }}" --filters "Name=group-name,Values=*vault*,*cloud-cost*,*ec2*" --query "SecurityGroups[0].GroupId" --output text)
+            fi
           else
-            echo "Could not resolve IP for host: $VAULT_HOST"
+            echo "Vault host is not a direct IP. Attempting DNS resolution..."
+            RESOLVED_IP=$(dig +short "$VAULT_HOST" | tail -n1 || nslookup "$VAULT_HOST" | awk '/Address:/ {print $2}' | tail -n1)
+            if [ -n "$RESOLVED_IP" ]; then
+              echo "Resolved IP: $RESOLVED_IP"
+              SG_ID=$(aws ec2 describe-instances --region "${{ inputs.aws-region }}" --filters "Name=ip-address,Values=$RESOLVED_IP" --query "Reservations[*].Instances[*].SecurityGroups[0].GroupId" --output text)
+              if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+                SG_ID=$(aws ec2 describe-instances --region "${{ inputs.aws-region }}" --filters "Name=network-interface.addresses.association.public-ip,Values=$RESOLVED_IP" --query "Reservations[*].Instances[*].SecurityGroups[0].GroupId" --output text)
+              fi
+            fi
+            if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+              SG_ID=$(aws ec2 describe-security-groups --region "${{ inputs.aws-region }}" --filters "Name=group-name,Values=*vault*,*cloud-cost*,*ec2*" --query "SecurityGroups[0].GroupId" --output text)
+            fi
           fi
         fi
         
