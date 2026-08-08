@@ -94,11 +94,11 @@ export default function FinOpsChat() {
 
     try {
       const { resources, recommendations } = getContextData();
-      const token = (insforge as any).tokenManager.getAccessToken();
+      const token = (insforge as any).tokenManager.getAccessToken() || 'local-dev-token';
       
       const headers = {
         'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        'Authorization': `Bearer ${token}`,
       };
 
       const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
@@ -123,7 +123,10 @@ export default function FinOpsChat() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Chat request failed' }));
-        throw new Error(errorData.detail?.message || errorData.detail || 'Failed to get response');
+        const detailMsg = typeof errorData.detail === 'string'
+          ? errorData.detail
+          : errorData.detail?.message || errorData.message || (typeof errorData.detail === 'object' ? JSON.stringify(errorData.detail) : 'Chat request failed');
+        throw new Error(detailMsg);
       }
 
       const data = await response.json();

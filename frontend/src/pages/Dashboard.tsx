@@ -16,12 +16,12 @@ export default function Dashboard() {
 
   // Helper function to fetch from backend with InsForge Authorization header
   const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
-    const token = (insforge as any).tokenManager.getAccessToken();
+    const token = (insforge as any).tokenManager.getAccessToken() || 'local-dev-token';
     
     const headers = {
       'Content-Type': 'application/json',
       ...options.headers,
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      'Authorization': `Bearer ${token}`,
     };
 
     const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
@@ -32,7 +32,10 @@ export default function Dashboard() {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: 'API request failed' }));
-      throw new Error(errorData.detail?.message || errorData.detail || 'API request failed');
+      const detailMsg = typeof errorData.detail === 'string'
+        ? errorData.detail
+        : errorData.detail?.message || errorData.message || (typeof errorData.detail === 'object' ? JSON.stringify(errorData.detail) : 'API request failed');
+      throw new Error(detailMsg);
     }
 
     return response.json();
