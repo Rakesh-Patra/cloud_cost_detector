@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cloud_cost_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-clouduser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudpass}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudcost}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clouduser} -d ${POSTGRES_DB:-cloudcost}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloud_cost_backend
+    networks:
+      default:
+        aliases:
+          - cloud-cost-backend-service
+          - backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AWS_DEFAULT_REGION
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-clouduser}:${POSTGRES_PASSWORD:-cloudpass}@postgres:5432/${POSTGRES_DB:-cloudcost}
+      - DB_PATH=/app/data/db.sqlite3
+      - ALLOWED_ORIGINS
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
+        VITE_INSFORGE_PROJECT_URL: ${VITE_INSFORGE_PROJECT_URL:-https://scf29qqy.us-east.insforge.app}
+        VITE_INSFORGE_ANON_KEY: ${VITE_INSFORGE_ANON_KEY:-ik_fc877384331b6eaae45d762900f67d0c}
+    ports:
+      - "5173:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  vault:
+    image: hashicorp/vault:1.15.0
+    container_name: cloud_cost_vault
+    ports:
+      - "8200:8200"
+    command: server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+
+volumes:
+  postgres_data:
+    driver: local
+  vault_data:
+    driver: local
+
