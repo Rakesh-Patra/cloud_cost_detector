@@ -22,21 +22,17 @@ spec:
         app: cloud-cost-backend
     spec:
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
         fsGroup: 65532
-        seccompProfile:
-          type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/rakesh-patra/cloud-cost-backend:v1.0.0
+          image: cloud-cost-backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
               name: http
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false
             capabilities:
               drop:
                 - ALL

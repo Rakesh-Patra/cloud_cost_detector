@@ -22,21 +22,17 @@ spec:
         app: cloud-cost-frontend
     spec:
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 101
         fsGroup: 101
-        seccompProfile:
-          type: RuntimeDefault
       containers:
         - name: frontend
-          image: ghcr.io/rakesh-patra/cloud-cost-frontend:v1.0.0
+          image: cloud-cost-frontend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
               name: http
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false
             capabilities:
               drop:
                 - ALL

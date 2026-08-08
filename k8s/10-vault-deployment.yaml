@@ -16,8 +16,6 @@ spec:
         app: cloud-cost-vault
     spec:
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 100
         fsGroup: 100
       containers:
         - name: vault
