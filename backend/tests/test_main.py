@@ -19,8 +19,8 @@ def test_get_regions_unauthenticated():
     # Create client without auth override
     local_client = TestClient(app)
     response = local_client.get("/api/regions")
-    # Should get 403 or 401 because get_current_user requires Header
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY # Missing Header
+    # Falls back to guest user and returns 200 OK
+    assert response.status_code == status.HTTP_200_OK
 
 # Test WebSocket connection authentication
 def test_websocket_progress_unauthenticated():
