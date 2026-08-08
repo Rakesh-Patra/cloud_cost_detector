@@ -229,21 +229,20 @@ async def get_current_user(authorization: str = Header(..., description="InsForg
 @app.get("/api/regions", status_code=status.HTTP_200_OK)
 async def get_regions(user: dict = Depends(get_current_user)):
     """
-    Retrieve a list of active AWS regions.
-    Raises 401/400/429/500 if the AWS API calls fail.
+    Retrieve a list of active AWS regions. Fallback to standard AWS regions if listing fails.
     """
     logger.info("Fetching active AWS regions")
     try:
         regions = list_aws_regions()
         return {"regions": regions}
-    except AWSCredentialException as e:
-        await credential_exception_handler(None, e)
-    except AWSRegionException as e:
-        await region_exception_handler(None, e)
-    except AWSRateLimitException as e:
-        await rate_limit_exception_handler(None, e)
-    except AWSScanException as e:
-        await scan_exception_handler(None, e)
+    except Exception as e:
+        logger.warning(f"Could not dynamically list AWS regions ({e}), returning default AWS region list")
+        default_regions = [
+            "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+            "ap-south-1", "ap-northeast-1", "ap-southeast-1", "ap-southeast-2",
+            "eu-west-1", "eu-central-1", "sa-east-1"
+        ]
+        return {"regions": default_regions}
 
 
 @app.websocket("/ws/progress/{analysis_id}")

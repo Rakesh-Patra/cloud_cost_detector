@@ -11,7 +11,7 @@ export default function Dashboard() {
   const [scanning, setScanning] = useState(false);
   const [progressLogs, setProgressLogs] = useState<string[]>([]);
   const [scanError, setScanError] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg] = useState('');
   const navigate = useNavigate();
 
   // Helper function to fetch from backend with InsForge Authorization header
@@ -39,22 +39,26 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    const DEFAULT_REGIONS = [
+      'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
+      'ap-south-1', 'ap-northeast-1', 'ap-southeast-1', 'eu-west-1', 'eu-central-1'
+    ];
+
     const loadRegions = async () => {
       try {
         setLoadingRegions(true);
         const data = await apiFetch('/api/regions');
-        if (data?.regions) {
+        if (data?.regions && data.regions.length > 0) {
           setRegions(data.regions);
-          // Default to us-east-1 if available, otherwise first region
-          if (data.regions.includes('us-east-1')) {
-            setSelectedRegion('us-east-1');
-          } else if (data.regions.length > 0) {
-            setSelectedRegion(data.regions[0]);
-          }
+          setSelectedRegion(data.regions.includes('us-east-1') ? 'us-east-1' : data.regions[0]);
+        } else {
+          setRegions(DEFAULT_REGIONS);
+          setSelectedRegion('us-east-1');
         }
       } catch (err: any) {
-        console.error('Error loading regions:', err);
-        setErrorMsg(err.message || 'Failed to fetch active AWS regions. Please check credentials.');
+        console.warn('Using default region list due to apiFetch notice:', err);
+        setRegions(DEFAULT_REGIONS);
+        setSelectedRegion('us-east-1');
       } finally {
         setLoadingRegions(false);
       }
