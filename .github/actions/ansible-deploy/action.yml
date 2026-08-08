@@ -55,7 +55,9 @@ runs:
       shell: bash
       run: |
         mkdir -p /tmp/.ansible_ssh
-        echo "${{ inputs.ssh-private-key }}" > /tmp/.ansible_ssh/deploy_key.pem
+        cat << 'EOF' > /tmp/.ansible_ssh/deploy_key.pem
+${{ inputs.ssh-private-key }}
+EOF
         chmod 600 /tmp/.ansible_ssh/deploy_key.pem
 
     - name: Run Ansible Playbook
