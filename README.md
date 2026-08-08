@@ -183,13 +183,16 @@ The easiest way to start both services locally is using Docker Compose:
 To run the microservices stack on a local cluster (Docker Desktop K8s, Minikube, or K3s):
 
 1. **Apply Namespace & Configurations:**
+
    ```bash
    kubectl apply -f k8s/00-namespace.yaml
    kubectl apply -f k8s/01-configmap.yaml
    ```
 
 2. **Create Cluster Secret:**
+
    Copy `k8s/02-secret.yaml.example` to `k8s/02-secret.yaml` and set your credentials, or apply dynamically:
+
    ```bash
    kubectl create secret generic cloud-cost-secret \
      --namespace cloud-cost \
@@ -200,11 +203,13 @@ To run the microservices stack on a local cluster (Docker Desktop K8s, Minikube,
    ```
 
 3. **Deploy Microservices Stack (Backend, Frontend, Storage & Vault):**
+
    ```bash
    kubectl apply -f k8s/
    ```
 
 4. **Verify Pod Status & Access Services:**
+
    ```bash
    kubectl get pods -n cloud-cost
    
