@@ -69,8 +69,7 @@ jobs:
         run: |
           yamllint -d "{extends: relaxed, rules: {line-length: {max: 200}, truthy: disable}}" \
             .github/workflows/ \
-            docker-compose.yml \
-            .github/dependabot.yml
+            k8s/
   markdown-lint:
     name: Markdown Lint
     runs-on: ubuntu-latest

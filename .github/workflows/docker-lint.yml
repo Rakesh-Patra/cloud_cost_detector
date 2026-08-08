@@ -57,8 +57,12 @@ jobs:
         uses: actions/checkout@v4
       - name: Validate docker-compose.yml
         run: |
-          docker compose -f docker-compose.yml config --quiet
-          echo "✅ docker-compose.yml is valid"
+          if [ -f "docker-compose.yml" ]; then
+            docker compose -f docker-compose.yml config --quiet
+            echo "✅ docker-compose.yml is valid"
+          else
+            echo "ℹ️ docker-compose.yml not present (K8s production setup active)"
+          fi
   dockerignore-check:
     name: Dockerignore Best Practices
     runs-on: ubuntu-latest
