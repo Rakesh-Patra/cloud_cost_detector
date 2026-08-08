@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-cost-backend-service
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: cloud-cost-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

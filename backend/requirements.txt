@@ -7,3 +7,7 @@ websockets==15.0.1
 httpx==0.28.1
 Pillow==11.3.0
 reportlab==5.0.0
+psycopg2-binary==2.9.9
+prometheus-fastapi-instrumentator==7.0.0
+python-json-logger==3.2.1
+

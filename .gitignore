@@ -10,7 +10,12 @@ node_modules/
 !.env.*.example
 *.pem
 *.key
+**/*.pem
+**/*.key
 id_rsa
+terrakey
+terraform/terrakey
+k8s/02-secret.yaml
 
 # Docker Compose
 docker-compose.yml

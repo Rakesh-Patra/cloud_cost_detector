@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloud-cost-rolebinding
+  namespace: cloud-cost-dev
+subjects:
+  - kind: ServiceAccount
+    name: cloud-cost-sa
+    namespace: cloud-cost-dev
+roleRef:
+  kind: Role
+  name: cloud-cost-role
+  apiGroup: rbac.authorization.k8s.io

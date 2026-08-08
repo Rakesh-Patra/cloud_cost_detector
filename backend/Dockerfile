@@ -12,8 +12,8 @@ RUN mkdir -p /app/data
 # ─── Stage 2: Final (Distroless) ────────────────────────────────────────────
 FROM gcr.io/distroless/python3-debian12
 
-# Use built-in nonroot user
-USER nonroot
+# Use explicit nonroot user ID (65532) for K8s security context parity
+USER 65532:65532
 
 WORKDIR /app
 

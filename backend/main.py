@@ -59,7 +59,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Instrument Prometheus metrics if available
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app)
+except Exception:
+    pass
+
+@app.get("/healthz", status_code=status.HTTP_200_OK, tags=["Health"])
+@app.get("/livez", status_code=status.HTTP_200_OK, tags=["Health"])
+async def liveness_probe():
+    """Liveness probe to confirm the container process is running."""
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/readyz", tags=["Health"])
+async def readiness_probe():
+    """Readiness probe to confirm database connectivity and application readiness."""
+    db_ok = database.check_db_health()
+    if not db_ok:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"status": "unhealthy", "database": "disconnected"}
+        )
+    return {"status": "ready", "database": "connected"}
+
 # Define request/response models
+
 class AnalyzeRequest(BaseModel):
     region: str = Field(..., description="The AWS region to scan, e.g., 'us-east-1'")
     analysis_id: str | None = Field(None, description="Optional UUID to track progress via WebSockets")

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-cost-vault
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-vault
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloud-cost-vault
+  template:
+    metadata:
+      labels:
+        app: cloud-cost-vault
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        fsGroup: 100
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.15.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - server
+            - -dev
+          ports:
+            - containerPort: 8200
+              name: vault-port
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+                - IPC_LOCK
+          volumeMounts:
+            - name: vault-storage
+              mountPath: /vault/file
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: vault-storage
+          persistentVolumeClaim:
+            claimName: cloud-cost-vault-pvc

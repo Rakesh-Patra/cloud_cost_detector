@@ -73,6 +73,7 @@ resource "aws_key_pair" "app" {
 }
 
 resource "aws_iam_role" "app" {
+  count       = var.create_iam_role ? 1 : 0
   name_prefix = "${var.project_name}-${var.environment}-role-"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -89,13 +90,15 @@ resource "aws_iam_role" "app" {
 }
 
 resource "aws_iam_role_policy_attachment" "readonly" {
-  role       = aws_iam_role.app.name
+  count      = var.create_iam_role ? 1 : 0
+  role       = aws_iam_role.app[0].name
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
 resource "aws_iam_instance_profile" "app" {
+  count       = var.create_iam_role ? 1 : 0
   name_prefix = "${var.project_name}-${var.environment}-profile-"
-  role        = aws_iam_role.app.name
+  role        = aws_iam_role.app[0].name
 }
 
 resource "aws_instance" "app" {
@@ -105,7 +108,8 @@ resource "aws_instance" "app" {
   instance_type          = var.instance_type
   key_name               = aws_key_pair.app.key_name
   vpc_security_group_ids = [aws_security_group.ec2.id]
-  iam_instance_profile   = aws_iam_instance_profile.app.name
+  iam_instance_profile   = var.create_iam_role ? aws_iam_instance_profile.app[0].name : null
+
 
   metadata_options {
     http_endpoint               = "enabled"
