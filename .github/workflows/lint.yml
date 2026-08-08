@@ -83,6 +83,7 @@ jobs:
             **/*.md
             !node_modules/**
             !**/node_modules/**
+            !actionlint_bin/**
   shell-lint:
     name: Shell Script Lint (ShellCheck)
     runs-on: ubuntu-latest
