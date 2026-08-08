@@ -53,11 +53,11 @@ runs:
     - name: Write SSH private key
       if: ${{ inputs.ssh-private-key != '' }}
       shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh-private-key }}
       run: |
         mkdir -p /tmp/.ansible_ssh
-        cat << 'EOF' > /tmp/.ansible_ssh/deploy_key.pem
-${{ inputs.ssh-private-key }}
-EOF
+        printf "%s\n" "$SSH_KEY" > /tmp/.ansible_ssh/deploy_key.pem
         chmod 600 /tmp/.ansible_ssh/deploy_key.pem
 
     - name: Run Ansible Playbook
