@@ -46,3 +46,9 @@ Thumbs.db
 # Ansible
 *.retry
 ansible/inventory/*.dynamic.yml
+
+# Temporary & Binary Tools
+actionlint.zip
+actionlint_bin/
+scratch/
+
