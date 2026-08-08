@@ -57,11 +57,13 @@ jobs:
           api-key: ${{ env.INFRACOST_API_KEY }}
       - name: Generate Infracost JSON
         if: ${{ env.INFRACOST_API_KEY != '' }}
+        continue-on-error: true
         shell: bash
         run: |
           infracost breakdown --path=terraform/ --format=json --out-file=/tmp/infracost.json
       - name: Post Infracost Comment
         if: ${{ env.INFRACOST_API_KEY != '' && github.event_name == 'pull_request' }}
+        continue-on-error: true
         shell: bash
         run: |
           PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
