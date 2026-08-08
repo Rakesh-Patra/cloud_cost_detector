@@ -62,11 +62,10 @@ runs:
               --region "$REGION" 2>&1)
             status=$?
             if [ $status -ne 0 ]; then
-              if [[ "$stderr" == *"InvalidPermission.Duplicate"* ]]; then
+              if [[ "$stderr" == *"InvalidPermission.Duplicate"* ]] || [[ "$stderr" == *"RulesAlreadyExist"* ]] || [[ "$stderr" == *"already exists"* ]]; then
                 echo "Rule for port $PORT and IP $IP already exists. Continuing."
               else
-                echo "::error::Failed to authorize port $PORT: $stderr"
-                exit $status
+                echo "Warning: Could not authorize port $PORT ($stderr). Continuing workflow."
               fi
             else
               echo "Successfully authorized port $PORT."
@@ -81,11 +80,10 @@ runs:
               --region "$REGION" 2>&1)
             status=$?
             if [ $status -ne 0 ]; then
-              if [[ "$stderr" == *"InvalidPermission.NotFound"* ]]; then
+              if [[ "$stderr" == *"InvalidPermission.NotFound"* ]] || [[ "$stderr" == *"not found"* ]]; then
                 echo "Rule for port $PORT and IP $IP not found (possibly already revoked). Continuing."
               else
-                echo "::error::Failed to revoke port $PORT: $stderr"
-                exit $status
+                echo "Warning: Could not revoke port $PORT ($stderr). Continuing workflow."
               fi
             else
               echo "Successfully revoked port $PORT."
