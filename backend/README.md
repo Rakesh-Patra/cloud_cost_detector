@@ -21,6 +21,7 @@ This directory contains the FastAPI-based backend microservice. It is responsibl
 ## 🚀 Getting Started
 
 ### 📦 Prerequisites
+
 - Python 3.10+
 - Pip (Python Package Installer)
 - AWS credentials set up locally (`~/.aws/credentials`)
@@ -28,6 +29,7 @@ This directory contains the FastAPI-based backend microservice. It is responsibl
 ### 🛠️ Quick Installation & Startup
 
 1. **Activate Python Virtual Environment:**
+
    ```bash
    python -m venv venv
    # Windows (CMD):
@@ -37,12 +39,15 @@ This directory contains the FastAPI-based backend microservice. It is responsibl
    ```
 
 2. **Install Dependencies:**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 3. **Configure Environment Variables:**
+
    Create a `.env` file in this directory (based on `.env.example`):
+
    ```env
    GEMINI_API_KEY=your_gemini_api_key
    INSFORGE_PROJECT_URL=your_insforge_project_url
@@ -50,11 +55,13 @@ This directory contains the FastAPI-based backend microservice. It is responsibl
    ```
 
 4. **Launch Local Server:**
+
    ```bash
    python main.py
    ```
-   The backend will start on **http://localhost:8000**.
-   - Check interactive API documentation: http://localhost:8000/docs
+
+   The backend will start on **<http://localhost:8000>**.
+   - Check interactive API documentation: <http://localhost:8000/docs>
    - WebSocket progress tracker: `ws://localhost:8000/ws/progress/{analysis_id}`
 
 ---

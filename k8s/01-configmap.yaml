@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-cost-config
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-detective
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
+data:
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  ENVIRONMENT: "production"
+  AWS_DEFAULT_REGION: "us-east-1"
+  ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:8080"
+  VITE_BACKEND_URL: "http://cloud-cost-backend-service:8000"
+  DB_PATH: "/app/data/db.sqlite3"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-cost-vault-config
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-vault
+    app.kubernetes.io/version: "1.15.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
+data:
+  vault.hcl: |
+    storage "file" {
+      path = "/vault/file"
+    }
+
+    listener "tcp" {
+      address     = "0.0.0.0:8200"
+      tls_disable = 1
+    }
+
+    ui = true
+    disable_mlock = true
+    api_addr = "http://cloud-cost-vault-service:8200"
+    cluster_addr = "http://cloud-cost-vault-service:8201"

@@ -1,0 +1,24 @@
+# .gitleaks.toml - Gitleaks secret scanner configuration
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+title = "Cloud Cost Detective - Gitleaks Config"
+
+[allowlist]
+  description = "Allowlist for test fixtures and known non-secrets"
+
+  # Allow any line with a nosec comment (bandit/gitleaks convention)
+  regexes = [
+    '''(?i)nosec''',
+    '''test[-_]api[-_]key''',
+    '''test[-_]secret''',
+    '''unit[-_]test''',
+    '''for[-_]unit[-_]tests[-_]only''',
+    '''placeholder''',
+  ]
+
+  # Allowlist specific paths that are known to contain fake/test values only
+  paths = [
+    '''backend/tests/.*''',
+    '''\.env\.example''',
+    '''frontend/\.env\.example''',
+  ]

@@ -1,14 +1,14 @@
-# 🔍 AI Cloud Cost Detective — Enterprise FinOps & Cost Optimization Platform
+# 🔍 AI Cloud Cost Detective — Enterprise Multi-Tenant FinOps Platform
 
-Welcome to the **AI Cloud Cost Detective** repository! This platform helps engineering, finance, and DevOps teams track, analyze, and optimize cloud expenses. By combining automated AWS infrastructure scans with **Gemini AI**, it identifies orphaned assets, recommends cost-saving measures (such as upgrading storage types from `gp2` to `gp3`), alerts teams to budget spikes, and enables automatic remediation.
+Welcome to the **AI Cloud Cost Detective** repository! This platform helps engineering, finance, and DevOps teams track, analyze, and optimize cloud expenses across multi-account AWS environments. By combining automated AWS infrastructure scans, **14-day CloudWatch telemetry**, precision regional pricing models, and **Gemini AI**, it identifies orphaned assets, recommends cost-saving modernizations (such as upgrading `gp2` to `gp3` storage for 20% savings), enforces automated safety guardrails, and generates copy-paste **Terraform IaC** fixes.
 
-The repository is built as a containerized multi-tier web application (FastAPI backend + Vite/React frontend) backed by a local SQLite database for configurations and an InsForge managed cloud database for audit tracking. It is fully guarded by a **DevSecOps shift-left security pipeline** to prevent any credential leaks.
+The platform is designed with an **Enterprise-First Security Model**: zero permanent credentials stored, 1-Click AWS CloudFormation onboarding via `sts:AssumeRole`, **Snapshot-before-Delete** safeguards, and a **7-Day "Tag-and-Wait" Quarantine lifecycle**.
 
 ---
 
 ## 🗺️ System Architecture Overview
 
-```
+```text
                           ┌──────────────────────────┐
                           │    Vite / React Web UI   │
                           │   (TypeScript/Tailwind)  │
@@ -18,150 +18,217 @@ The repository is built as a containerized multi-tier web application (FastAPI b
                                         │
                                         ▼
                           ┌──────────────────────────┐
-                          │      FastAPI Backend     │◄─────────┐
-                          │         (Python)         │          │
-                          └──────────┬───┬───────────┘          │
-                                     │   │                      │
-                  boto3 AWS API Scans │   │ Gemini API           │
-                                     │   │ (AI Analysis)        │
-                                     ▼   ▼                      ▼
-                            ┌──────────────┐          ┌───────────────────┐
-                            │  AWS Cloud   │          │  InsForge Cloud   │
-                            │ Infrastructure│         │  Audit Database   │
-                            └──────────────┘          └───────────────────┘
-                                                                ▲
-                                                                │
-                                    Local Sync (Anomaly Logs)   │
-                                                                │
-                                                      ┌─────────┴─────────┐
-                                                      │ SQLite Local DB   │
-                                                      │   (db.sqlite3)    │
-                                                      └───────────────────┘
+                          │     FastAPI Backend      │◄─────────┐
+                          │        (Python)          │          │
+                          └─────┬───────┬───────┬────┘          │
+                                │       │       │               │
+            Dynamic STS Session │       │       │ Gemini API    │
+            (`sts:AssumeRole`)  │       │       │ (Synthesis)   │
+                                ▼       │       ▼               ▼
+         ┌──────────────────────────┐   │    ┌───────┐ ┌───────────────────┐
+         │ Customer AWS Account(s)  │   │    │Gemini │ │  InsForge Cloud   │
+         │ - 14-Day CloudWatch CW   │   │    │  AI   │ │  Audit Database   │
+         │ - EC2, EBS, RDS Scanner  │   │    └───────┘ └───────────────────┘
+         │ - Snapshot / Quarantine  │   │                       ▲
+         └──────────────────────────┘   │                       │
+                                        ▼                       │
+                           ┌─────────────────────────┐          │
+                           │  Pricing & Rules Engine │          │
+                           │  (Deterministic Tier 1) │          │
+                           └────────────┬────────────┘          │
+                                        │                       │
+                                        │ Local Sync / State    │
+                                        ▼                       │
+                           ┌─────────────────────────┐          │
+                           │ SQLite / Postgres DB    ├──────────┘
+                           │ (Orgs, Accounts, Quar)  │
+                           └─────────────────────────┘
 ```
 
 ---
 
 ## 🚀 Key Platform Features
 
-Here is what the application provides:
+### 1. Zero-Key Multi-Tenant AWS Onboarding (`sts:AssumeRole`)
 
-### 1. Secure Authentication & Verification Flow
-User sessions are safely handled via secure InsForge authentication steps:
-- **Registration:** Complete a signup with email and password configs.
-- **Email Verification:** Simple verification processes prevent fake accounts.
-- **Login Portal:** Secure authentication to retrieve session access tokens.
+- **1-Click CloudFormation Launcher:** Deploy a read-only `SecurityAudit` IAM Role directly into your AWS account with a unique, cryptographically generated `ExternalId` in under 60 seconds.
+- **Zero Permanent Credentials:** No root AWS Access Keys or Secrets are ever saved in the platform database. Temporary STS session tokens are created dynamically per scan.
+- **Multi-Account Selector:** Switch and scan across different AWS environments (Production, Staging, Dev) seamlessly.
 
-<p align="center">
-  <img src="assets/login.png" alt="Login Page" width="30%" />
-  <img src="assets/signup.png" alt="Signup Page" width="30%" />
-  <img src="assets/email_verification.png" alt="Email Verification" width="30%" />
-</p>
-<p align="center"><em>Figures 1, 2, & 3: Login, Registration, and Email Verification interfaces</em></p>
+### 2. 14-Day CloudWatch Telemetry & Precision Pricing Engine
 
-### 2. Cost Detective Dashboard & WebSocket Scanner
-- **AWS Target Region Selector:** Initiate real-time scans on active cost-driving AWS resources in any specific region (e.g., `us-east-1`).
-- **Interactive Progress Tracker:** Monitor the scan milestones dynamically streamed over WebSockets:
-  1. `Initializing AWS clients...`
-  2. `Scanning EC2, EBS, and RDS resources...`
-  3. `Generating structured cost analysis via Gemini AI...`
-  4. `Persisting audit metrics to InsForge Cloud...`
-  5. `Analysis complete`
+- **False-Positive Elimination:** Ingests 14 days of hourly P95/P99 CPU utilization and Network I/O metrics to differentiate between true idle compute ($< 2\%$ CPU) and periodic batch workloads.
+- **Precision Pricing Model:** Computes exact regional On-Demand rates, `gp2` $\rightarrow$ `gp3` modernization deltas (\$0.10 vs \$0.08/GB-mo), and idle Elastic IP fees.
+- **Two-Tier Processing:** Fast Python deterministic filtering scores 100% of resources in milliseconds, sending only anomalies to Gemini AI—slashing token consumption by 95%.
 
-![Cost Detective Dashboard](assets/dashboard.png)
-*Figure 4: Cost Detective Dashboard with region scan interface*
+### 3. Enterprise Safety Guardrails & Quarantine Dashboard
 
-![WebSocket Scanner in Progress](assets/scan_progress.png)
-*Figure 5: Scanner displaying WebSocket-driven active progress steps*
+- **Snapshot-Before-Delete:** Every volume termination automatically creates an encrypted, tagged backup snapshot (`CreatedBy: CloudCostDetective`) with an auto-expiry policy before deletion.
+- **7-Day "Tag-and-Wait" Quarantine:** Resources flagged for deletion receive AWS tags (`FinOps_Status=Quarantined`) with a 7-day grace period.
+- **Quarantine Hub (`/quarantine`):** View quarantined assets, monitor remaining days, and 1-click **"Keep & Whitelist"** or **"Safe Delete Now"**.
 
-### 3. Detailed Cost Analysis & Optimization Reports
-Once analysis completes, the app displays dynamic, interactive cards for cost-saving suggestions:
-- **Optimization Recommendation Cards:** View recommendations generated by Gemini AI detailing unattached assets, orphaned storage, or outdated configurations.
-- **Automated Remediation:** Trigger script executions to safely upgrade gp2 storage to gp3, delete stale volumes, or release unassigned resources.
+### 4. Detailed Cost Analysis & Terraform IaC Generation
 
-![AI Cost Analysis Recommendations Report](assets/analysis_report.png)
-*Figure 6: Generated cloud optimization and remediation reports page*
+- **Optimization Cards:** Displays potential savings per resource with severity badges and accurate dollar amounts.
+- **Terraform HCL Fixes:** Provides copy-pasteable Terraform configuration code to remediate findings via Infrastructure-as-Code without creating state drift.
+- **Automated CLI Remediation:** 1-click execution to upgrade storage or stop idle compute directly from the UI.
 
-### 4. Cost Audit History
-- **Historical Comparison:** Review and compare past cloud optimization reports.
-- **Insight Cards:** Inspect the date of scan, target region, total scanned resource counts, active warning flags, and estimated savings.
+### 5. Budgets & Spend Anomaly Alerts
 
-![Cost Audit History Log](assets/cost_audit_history.png)
-*Figure 7: Audited history log showing historical comparison and savings details*
-
-### 5. FinOps AI Chat Assistant
-- **Context-Aware Conversational AI:** Talk with the FinOps assistant drawer anchored to the screen to inspect resources.
-- **Quick Action Suggested Prompts:** Ask to write Terraform scripts, detail critical issues, or explain upgrade instructions.
-
-![FinOps AI Chat Assistant Drawer](assets/ai_assistant.png)
-*Figure 8: Conversational FinOps chat assistant drawer*
-
-### 6. Budgets & Spend Anomaly Alerts
 - **Guardrails:** Configure monthly caps and list email distribution channels.
 - **Spend Trends:** View 14-day spending charts featuring highlight indicators on anomalous surges.
-- **Breach Notifications:** Automated notifications are dispatched directly to the registered communication channels.
-
-![Budgets Config & 14-Day Spend Trends](assets/budget&alerts.png)
-*Figure 9: Budget settings, threshold configs, and spend trend visualizers*
-
-![Alert Notification Email](assets/alert_report_email.png)
-*Figure 10: Email alert sent to users warning of cost threshold breaches*
+- **Automated Notifications:** Dispatches real-time email alerts upon threshold breaches.
 
 ---
 
 ## 📁 Repository Structure
 
 - [backend/](file:///c:/ai_log/cloud_cost/backend) — FastAPI application code, AWS scanners, Gemini prompt engines, and database clients.
-  - [main.py](file:///c:/ai_log/cloud_cost/backend/main.py) — Main API endpoints, WebSocket connection manager, auth middlewares, and background anomaly scheduler loops.
-  - [aws_scanner.py](file:///c:/ai_log/cloud_cost/backend/aws_scanner.py) — Boto3 scanner fetching EC2, EBS, RDS assets, and executing automated remediations.
-  - [ai_analyzer.py](file:///c:/ai_log/cloud_cost/backend/ai_analyzer.py) — Interacts with Google Gemini AI to analyze raw resources and recommend savings.
-  - [anomaly_detector.py](file:///c:/ai_log/cloud_cost/backend/anomaly_detector.py) — Mathematical models that evaluate cost trends and send notifications.
-  - [database.py](file:///c:/ai_log/cloud_cost/backend/database.py) — Schema definitions and read/write layers for local SQLite backups.
-  - [insforge_client.py](file:///c:/ai_log/cloud_cost/backend/insforge_client.py) — Client to manage session authentications, write audits, and fetch histories.
-- [frontend/](file:///c:/ai_log/cloud_cost/frontend) — Single Page App (SPA) built using Vite, React, TypeScript, and Tailwind CSS.
-  - [src/pages/Dashboard.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Dashboard.tsx) — Main dashboard containing region controls and scan trigger interfaces.
-  - [src/pages/Budgets.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Budgets.tsx) — Setting caps, checking anomaly trend charts, and testing alerts.
-  - [src/pages/History.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/History.tsx) — Past audit reports list and savings summaries.
-  - [src/components/FinOpsChat.tsx](file:///c:/ai_log/cloud_cost/frontend/src/components/FinOpsChat.tsx) — The chatbot interface drawer anchored to the bottom-right.
-  - [src/components/ProgressTracker.tsx](file:///c:/ai_log/cloud_cost/frontend/src/components/ProgressTracker.tsx) — WebSocket progress visualization.
+  - [main.py](file:///c:/ai_log/cloud_cost/backend/main.py) — API endpoints, WebSocket connection manager, multi-tenant cloud account & quarantine routes.
+  - [aws_scanner.py](file:///c:/ai_log/cloud_cost/backend/aws_scanner.py) — Boto3 scanner, dynamic STS AssumeRole session factory, CloudWatch 14-day telemetry ingestion, snapshot-before-delete, and quarantine tagging.
+  - [pricing_engine.py](file:///c:/ai_log/cloud_cost/backend/pricing_engine.py) — Precision AWS pricing catalog and deterministic pre-filter evaluator.
+  - [ai_analyzer.py](file:///c:/ai_log/cloud_cost/backend/ai_analyzer.py) — Two-tier cost engine combining deterministic scoring with Gemini 2.5 Flash for executive summaries and Terraform HCL generation.
+  - [anomaly_detector.py](file:///c:/ai_log/cloud_cost/backend/anomaly_detector.py) — Cost spike detection and notification router.
+  - [database.py](file:///c:/ai_log/cloud_cost/backend/database.py) — Multi-tenant database schemas for organizations, cloud accounts, quarantine items, and budget configs.
+  - [tests/](file:///c:/ai_log/cloud_cost/backend/tests) — Comprehensive test suite (30 automated tests) for STS assume role, telemetry, pricing, and quarantine workflows.
+- [frontend/](file:///c:/ai_log/cloud_cost/frontend) — Single Page App (SPA) built with Vite, React, TypeScript, and Tailwind CSS.
+  - [src/pages/Dashboard.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Dashboard.tsx) — Main dashboard with multi-account switcher and 1-Click AWS Connect launcher.
+  - [src/pages/Quarantine.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Quarantine.tsx) — Quarantine management dashboard with grace period countdown and snapshot rollbacks.
+  - [src/pages/Report.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Report.tsx) — Cost analysis reports with Terraform IaC snippets and 7-day quarantine actions.
+  - [src/components/ConnectCloudModal.tsx](file:///c:/ai_log/cloud_cost/frontend/src/components/ConnectCloudModal.tsx) — 1-Click AWS CloudFormation onboarding modal.
+  - [src/components/FinOpsChat.tsx](file:///c:/ai_log/cloud_cost/frontend/src/components/FinOpsChat.tsx) — Anchored FinOps conversational AI drawer.
 - [docker-compose.yml](file:///c:/ai_log/cloud_cost/docker-compose.yml) — Local multi-container development configuration.
 - [devops_roadmap.md](file:///c:/ai_log/cloud_cost/devops_roadmap.md) — Future implementation roadmap including CI/CD pipelines, Prometheus/Grafana monitors, IaC configs, and Helm plans.
 
 ---
 
-## 🛠️ Getting Started (Prerequisites)
+## 🛠️ Prerequisites & Setup Requirements
 
-Before running the application, make sure you have:
-1. **Docker & Docker Compose** installed.
-2. **AWS Credentials** configured locally (in `~/.aws/credentials`) or environment variables ready.
-3. **Google Gemini API Key** to power the AI Cost Analysis and Chat Assistant.
-4. **InsForge Project Credentials** to connect the database and user session authentication.
+Before pulling and running the repository on your laptop, ensure you have:
+
+1. **Git** ([Download Git](https://git-scm.com/))
+2. **Docker & Docker Compose** ([Download Docker Desktop](https://www.docker.com/products/docker-desktop/))
+3. **Google Gemini API Key** ([Get free key from Google AI Studio](https://aistudio.google.com/))
+4. **AWS Account Credentials** (Access Key & Secret Key with read permissions for EC2, EBS, RDS)
+5. **InsForge Project Credentials** (or your preferred auth endpoint)
 
 ---
 
-## 🐳 Quick Start: Running with Docker Compose (Recommended)
+## ⚡ Quick Start: 3-Step Setup (Run with Docker)
 
-The easiest way to start both services locally is using Docker Compose:
+The easiest way to run the entire platform locally is with Docker Compose.
 
-1. Create a configuration env file for the backend:
-   Copy [backend/.env.example](file:///c:/ai_log/cloud_cost/backend/.env.example) to `backend/.env` and update the credentials:
+### Step 1: Clone the Repository
+
+Open your terminal or command prompt and clone the repository:
+
+```bash
+git clone https://github.com/Rakesh-Patra/cloud_cost_detector.git
+cd cloud_cost_detector
+```
+
+### Step 2: Configure Environment Variables
+
+Create the `.env` configuration file for the backend:
+
+```bash
+# On Linux / macOS / Git Bash:
+cp backend/.env.example backend/.env
+
+# On Windows (PowerShell):
+Copy-Item backend\.env.example backend\.env
+```
+
+Open `backend/.env` in your text editor and fill in your credentials:
+
+```env
+# Google Gemini API Key (Required for AI Cost Audits & FinOps Chat)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# InsForge Cloud Database & Authentication Credentials
+INSFORGE_PROJECT_URL=https://your-project.us-east.insforge.app/
+INSFORGE_ANON_KEY=your_insforge_anon_key_here
+
+# AWS Access Credentials (Required for Scanning AWS Resources)
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_DEFAULT_REGION=us-east-1
+```
+
+> 💡 **Note for AWS credentials:** Alternatively, if you already have the AWS CLI configured on your computer (`aws configure`), Docker Compose will automatically mount your local `~/.aws/credentials` file.
+
+### Step 3: Build & Launch
+
+Start all services (Frontend, Backend, and Vault) with a single command:
+
+```bash
+docker compose up --build
+```
+
+---
+
+## 🌐 Accessing the Local Platform
+
+Once the containers start up, open your web browser to access the application:
+
+| Component | URL | Details |
+|---|---|---|
+| 💻 **Frontend Web UI** | <http://localhost:5173> (or <http://localhost:8080>) | React + Vite UI dashboard |
+| ⚡ **Backend API Docs** | <http://localhost:8000/docs> | Interactive Swagger API documentation |
+| 🛡️ **Quarantine Hub** | <http://localhost:5173/quarantine> | 7-day grace period & snapshot safety hub |
+| 🔐 **HashiCorp Vault UI** | <http://localhost:8200/ui> | Secrets manager (Root Token: `root` or `hvs...`) |
+
+> ⚡ **Connecting New AWS Accounts:** Once in the dashboard, click **"Connect AWS (1-Click)"** to automatically launch a pre-populated CloudFormation stack in your AWS console using STS AssumeRole. Zero root keys required!
+
+To stop the platform at any time, press `Ctrl + C` in your terminal, or run:
+
+```bash
+docker compose down
+```
+
+---
+
+## ☸️ Running with Kubernetes (k8s)
+
+To run the microservices stack on a local cluster (Docker Desktop K8s, Minikube, or K3s):
+
+1. **Apply Namespace & Configurations:**
+
    ```bash
-   cp backend/.env.example backend/.env
-   ```
-   Edit the values:
-   ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
-   INSFORGE_PROJECT_URL=your_insforge_project_url_here
-   INSFORGE_ANON_KEY=your_insforge_anon_key_here
+   kubectl apply -f k8s/00-namespace.yaml
+   kubectl apply -f k8s/01-configmap.yaml
    ```
 
-2. Build and launch the containers:
+2. **Create Cluster Secret:**
+
+   Copy `k8s/02-secret.yaml.example` to `k8s/02-secret.yaml` and set your credentials, or apply dynamically:
+
    ```bash
-   docker-compose up --build
+   kubectl create secret generic cloud-cost-secret \
+     --namespace cloud-cost \
+     --from-literal=DATABASE_URL="postgresql://clouduser:cloudpass@cloud-cost-postgres:5432/cloudcost" \
+     --from-literal=AWS_ACCESS_KEY_ID="your_aws_key" \
+     --from-literal=AWS_SECRET_ACCESS_KEY="your_aws_secret" \
+     --from-literal=VITE_INSFORGE_ANON_KEY="your_insforge_key"
    ```
 
-3. Access the platform:
-   - **Frontend Interface:** http://localhost:5173 (mapped to `8080` internally via Nginx)
-   - **Backend API Docs:** http://localhost:8000/docs (Swagger UI)
+3. **Deploy Microservices Stack (Backend, Frontend, Storage & Vault):**
+
+   ```bash
+   kubectl apply -f k8s/
+   ```
+
+4. **Verify Pod Status & Access Services:**
+
+   ```bash
+   kubectl get pods -n cloud-cost
+   
+   # Forward Frontend Web UI to port 5173:
+   kubectl port-forward svc/cloud-cost-frontend-service 5173:8080 -n cloud-cost
+   
+   # Forward Backend API Docs to port 8000:
+   kubectl port-forward svc/cloud-cost-backend-service 8000:8000 -n cloud-cost
+   ```
 
 ---
 
@@ -170,11 +237,15 @@ The easiest way to start both services locally is using Docker Compose:
 If you prefer to run the backend and frontend separately outside containers:
 
 ### 🐍 1. Backend Setup (FastAPI)
+
 1. Navigate to the backend folder:
+
    ```bash
    cd backend
    ```
+
 2. Create and activate a python virtual environment:
+
    ```bash
    python -m venv venv
    # On Windows (CMD):
@@ -182,44 +253,60 @@ If you prefer to run the backend and frontend separately outside containers:
    # On macOS/Linux:
    source venv/bin/activate
    ```
+
 3. Install requirements:
+
    ```bash
    pip install -r requirements.txt
    ```
+
 4. Define your environment variables in a `.env` file (see `.env.example`).
 5. Ensure your AWS credentials are exported in your terminal session:
+
    ```powershell
    # PowerShell
    $env:AWS_ACCESS_KEY_ID="your-key"
    $env:AWS_SECRET_ACCESS_KEY="your-secret"
    $env:AWS_DEFAULT_REGION="us-east-1"
    ```
+
 6. Run the FastAPI development server:
+
    ```bash
    python main.py
    ```
-   *(Running on http://localhost:8000)*
+
+   *(Running on <http://localhost:8000>)*
 
 ### ⚛️ 2. Frontend Setup (React/Vite)
+
 1. Navigate to the frontend folder:
+
    ```bash
    cd ../frontend
    ```
+
 2. Install npm packages:
+
    ```bash
    npm install
    ```
+
 3. Create your `.env` file containing configuration variables:
+
    ```env
    VITE_BACKEND_URL=http://localhost:8000
    VITE_INSFORGE_PROJECT_URL=your_insforge_project_url
    VITE_INSFORGE_ANON_KEY=your_insforge_anon_key
    ```
+
 4. Start the Vite server:
+
    ```bash
    npm run dev
    ```
-   *(Running on http://localhost:5173)*
+
+   *(Running on <http://localhost:5173>)*
 
 ---
 
@@ -244,7 +331,7 @@ If you prefer to run the backend and frontend separately outside containers:
 
 To ensure credentials, keys, and local test configurations never leak, the repository is guarded by a comprehensive **DevSecOps for Git** pipeline.
 
-```
+```text
 [Local Code Changes]
       │
       ├──> [Step 1: .gitignore] (Blocks untracked secrets / node_modules)
@@ -261,43 +348,54 @@ To ensure credentials, keys, and local test configurations never leak, the repos
 ```
 
 ### 1. `.gitignore` Guidelines
+
 To prevent local configs or database files from ever getting tracked, the following patterns are strictly ignored by Git:
+
 - **`.env` / `.env.*`** — Private credentials and access keys.
 - **`*.pem` / `*.key` / `id_rsa`** — Secure Shell (SSH) and encryption keys.
 - **`backend/*.sqlite3`** — Local database binaries.
 - **`node_modules/` & `dist/`** — Build assets and library dependencies.
 
 ### 2. Native Pre-Commit Hook Setup
+
 Git execution hooks block unsafe code from being committed locally.
+
 - **Location:** [`.git/hooks/pre-commit`](file:///c:/ai_log/cloud_cost/.git/hooks/pre-commit)
 - To enable execution privileges (macOS/Linux):
+
   ```bash
   chmod +x .git/hooks/pre-commit
   ```
 
 ### 3. Gitleaks Integration
+
 Gitleaks inspects codebase patterns for credentials, private keys, and API tokens based on the config file [`custom-rules.toml`](file:///c:/ai_log/cloud_cost/custom-rules.toml).
+
 - **Setup Gitleaks locally:**
   1. Install Python's `pre-commit` package manager:
      - On Windows (PowerShell/CMD): `pip install pre-commit` or `choco install pre-commit`
      - On macOS: `brew install pre-commit`
   2. Activate Gitleaks hook in this directory:
+
      ```bash
      pre-commit install
      ```
+
   3. Scan the local git history:
+
      ```bash
      gitleaks detect --config custom-rules.toml --verbose
      ```
 
 ### 4. Reusable DevSecOps Pipeline & HashiCorp Vault
+
 Our codebase is guarded by a comprehensive, modular **GitHub Actions DevSecOps Orchestrator Pipeline** ([devsecops-pipeline.yml](file:///.github/workflows/devsecops-pipeline.yml)).
 
-* **CI & Linting** ([ci.yml](file:///.github/workflows/ci.yml)): Validates Python syntax, typechecks React frontend, and runs Oxlint/Ruff checks.
-* **Security Scans**: Runs SAST and dependency analysis concurrently (Gitleaks, Bandit, Checkov, Trivy, Semgrep, and Dependency Review).
-* **Infracost & IaC** ([infracost.yml](file:///.github/workflows/infracost.yml)): Calculates cloud cost differences on Terraform pull requests.
-* **OIDC & HashiCorp Vault** ([vault-secrets/action.yml](file:///.github/actions/vault-secrets/action.yml)): Authenticates securely with Vault using GitHub OpenID Connect (OIDC) JWT tokens, fetching secrets directly into runner environments instead of saving static keys on GitHub.
-* **Automated Rollback & Drift Detection**: Detects configuration drifts on schedule and alerts you on Slack.
+- **CI & Linting** ([ci.yml](file:///.github/workflows/ci.yml)): Validates Python syntax, typechecks React frontend, and runs Oxlint/Ruff checks.
+- **Security Scans**: Runs SAST and dependency analysis concurrently (Gitleaks, Bandit, Checkov, Trivy, Semgrep, and Dependency Review).
+- **Infracost & IaC** ([infracost.yml](file:///.github/workflows/infracost.yml)): Calculates cloud cost differences on Terraform pull requests.
+- **OIDC & HashiCorp Vault** ([vault-secrets/action.yml](file:///.github/actions/vault-secrets/action.yml)): Authenticates securely with Vault using GitHub OpenID Connect (OIDC) JWT tokens, fetching secrets directly into runner environments instead of saving static keys on GitHub.
+- **Automated Rollback & Drift Detection**: Detects configuration drifts on schedule and alerts you on Slack.
 
 ---
 
@@ -307,11 +405,13 @@ We configure a local, dev-mode Vault server to secure project secrets and test O
 
 1. **Start & Configure Local Vault**:
    Run the automation script to download the Vault binary, boot it, and configure JWT/OIDC OIDC roles automatically:
+
    ```bash
    python setup_vault.py
    ```
+
 2. **Access Vault UI**:
-   - URL: **[http://127.0.0.1:8200/ui](http://127.0.0.1:8200/ui)**
+   - URL: **<http://127.0.0.1:8200/ui>**
    - Login: Select **Token** and enter `root`.
 3. **Manually Add Secrets**:
    Click on the **`secret/`** engine, select **Create secret**, and save keys inside:

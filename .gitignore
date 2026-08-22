@@ -1,7 +1,7 @@
 # Dependencies
 node_modules/
-backend/__pycache__/
-backend/*.pyc
+**/__pycache__/
+**/*.pyc
 
 # Environment & Secret files
 .env
@@ -10,10 +10,15 @@ backend/*.pyc
 !.env.*.example
 *.pem
 *.key
+**/*.pem
+**/*.key
 id_rsa
+terrakey
+terraform/terrakey
+k8s/02-secret.yaml
 
 # Docker Compose
-docker-compose.yml
+# docker-compose.yml tracked for production Cloud deployment
 docker-compose.override.yml
 docker-compose.local.yml
 
@@ -24,6 +29,7 @@ bin/
 
 # Databases
 backend/*.sqlite3
+backend/data/*.sqlite3
 *.db
 
 # Terraform state
@@ -41,3 +47,9 @@ Thumbs.db
 # Ansible
 *.retry
 ansible/inventory/*.dynamic.yml
+
+# Temporary & Binary Tools
+actionlint.zip
+actionlint_bin/
+scratch/
+

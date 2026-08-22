@@ -12,7 +12,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Run Semgrep
         uses: semgrep/semgrep-action@v1
         with:

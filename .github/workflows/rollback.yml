@@ -14,14 +14,7 @@ on:
       target-tag:
         description: 'Target Docker image tag / Git commit to rollback to'
         required: true
-      vault-url:
-        description: 'URL of the Vault server'
-        required: false
-        default: ''
-      vault-role:
-        description: 'Vault OIDC role'
-        required: false
-        default: ''
+        type: string
 
 jobs:
   get-ec2-ip:
@@ -32,43 +25,33 @@ jobs:
       contents: read
     outputs:
       ec2_ip: ${{ steps.terraform-output.outputs.ec2_ip }}
+      security_group_id: ${{ steps.terraform-output.outputs.security_group_id }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.target-tag }}
-
-      - name: Fetch AWS Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
-        uses: ./.github/actions/vault-secrets
-        with:
-          vault-url: ${{ inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role }}
-          vault-secrets: |
-            secret/data/cloud_cost/aws access_key | AWS_ACCESS_KEY_ID ;
-            secret/data/cloud_cost/aws secret_key | AWS_SECRET_ACCESS_KEY
-
       - name: Configure AWS Credentials
         uses: ./.github/actions/aws-auth
         with:
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: 'us-east-1'
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
-
       - name: Initialize Terraform
         uses: ./.github/actions/terraform-init
         with:
           environment-directory: 'terraform/environment/${{ inputs.environment }}'
-
       - name: Get EC2 Public IP
         id: terraform-output
         shell: bash
         working-directory: terraform/environment/${{ inputs.environment }}
         run: |
           EC2_IP=$(terraform output -raw public_ip)
+          SG_ID=$(terraform output -raw security_group_id)
           echo "ec2_ip=${EC2_IP}" >> $GITHUB_OUTPUT
+          echo "security_group_id=${SG_ID}" >> $GITHUB_OUTPUT
           echo "EC2 Public IP: ${EC2_IP}"
-
   rollback:
     name: Run Rollback
     needs: get-ec2-ip
@@ -83,12 +66,34 @@ jobs:
         with:
           ref: ${{ inputs.target-tag }}
 
+      - name: Configure AWS Credentials
+        if: ${{ needs.get-ec2-ip.outputs.security_group_id != '' }}
+        uses: ./.github/actions/aws-auth
+        with:
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: 'us-east-1'
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID || secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY || secrets.aws_secret_access_key }}
+
+      - name: Whitelist Runner IP
+        id: whitelist
+        if: ${{ needs.get-ec2-ip.outputs.security_group_id != '' }}
+        uses: ./.github/actions/whitelist-ip
+        with:
+          aws-region: 'us-east-1'
+          security-group-id: ${{ needs.get-ec2-ip.outputs.security_group_id }}
+          action: 'authorize'
+
       - name: Fetch Secrets from Vault
-        if: ${{ inputs.vault-url != '' && inputs.vault-role != '' }}
+        continue-on-error: false
+        env:
+          VAULT_URL: ${{ secrets.VAULT_URL }}
+          VAULT_ROLE: ${{ secrets.VAULT_ROLE }}
+        if: ${{ env.VAULT_URL != '' && env.VAULT_ROLE != '' }}
         uses: ./.github/actions/vault-secrets
         with:
-          vault-url: ${{ inputs.vault-url }}
-          vault-role: ${{ inputs.vault-role }}
+          vault-url: ${{ env.VAULT_URL }}
+          vault-role: ${{ env.VAULT_ROLE }}
           vault-secrets: |
             secret/data/cloud_cost/ssh private_key | SSH_PRIVATE_KEY
 
@@ -102,3 +107,12 @@ jobs:
           ghcr-username: ${{ github.actor }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           playbook: 'rollback'
+
+      - name: Revoke Whitelist
+        if: ${{ always() && needs.get-ec2-ip.outputs.security_group_id != '' && steps.whitelist.outputs.runner-ip != '' }}
+        uses: ./.github/actions/whitelist-ip
+        with:
+          aws-region: 'us-east-1'
+          security-group-id: ${{ needs.get-ec2-ip.outputs.security_group_id }}
+          ip-address: ${{ steps.whitelist.outputs.runner-ip }}
+          action: 'revoke'

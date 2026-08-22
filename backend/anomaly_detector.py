@@ -1,11 +1,11 @@
 import os
 import logging
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random  # nosec B411
 import httpx
 import boto3
-from botocore.exceptions import ClientError
+
 
 logger = logging.getLogger("anomaly_detector")
 
@@ -21,7 +21,7 @@ def fetch_daily_spend(region: str, threshold: float = 1000.0) -> dict:
         # Cost Explorer client is global, but typically accessed via us-east-1 endpoint
         client = boto3.client('ce', region_name='us-east-1')
         
-        end_date = datetime.utcnow().date()
+        end_date = datetime.now(timezone.utc).date()
         start_date = end_date - timedelta(days=21)
         
         logger.info(f"Querying AWS Cost Explorer from {start_date} to {end_date} for region {region}")
@@ -65,7 +65,7 @@ def fetch_daily_spend(region: str, threshold: float = 1000.0) -> dict:
         
         # Generate realistic mock data for past 21 days scaled to budget threshold
         daily_costs = []
-        end_date = datetime.utcnow().date()
+        end_date = datetime.now(timezone.utc).date()
         daily_base = max(5.0, threshold / 30.0)
         
         # We seed random using dates to keep the results stable across requests but realistic

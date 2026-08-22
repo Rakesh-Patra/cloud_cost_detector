@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import httpx
 import database
 
@@ -23,13 +23,13 @@ class InsForgeClient:
         if not self.enabled:
             logger.warning(
                 "InsForge connection variables (INSFORGE_PROJECT_URL, INSFORGE_ANON_KEY) "
-                "are missing. DB logging is disabled."
+                "are missing or incomplete. Remote database operations will fall back to local store."
             )
 
     def _get_headers(self, token: str = None, with_prefer: str = None) -> dict:
         if not self.enabled:
             raise InsForgeException("InsForge client is not configured. Check your environment variables.")
-        auth_token = token if token else self.anon_key
+        auth_token = token if (token and token not in ("guest-token", "None", "null", "undefined")) else self.anon_key
         headers = {
             "apikey": self.anon_key,
             "Authorization": f"Bearer {auth_token}",
@@ -38,6 +38,33 @@ class InsForgeClient:
         if with_prefer:
             headers["Prefer"] = with_prefer
         return headers
+
+    async def _send_request(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        url: str,
+        token: str = None,
+        params: dict = None,
+        json_data: dict = None,
+        with_prefer: str = None,
+        timeout: float = 10.0
+    ) -> httpx.Response:
+        """
+        Sends an HTTP request to InsForge. If the request fails with 401 Unauthorized
+        due to an expired or invalid user token, it automatically retries once using
+        the static anon_key as fallback.
+        """
+        headers = self._get_headers(token=token, with_prefer=with_prefer)
+        response = await client.request(method, url, params=params, json=json_data, headers=headers, timeout=timeout)
+        
+        # If 401 and a custom user token was supplied (different from anon_key), retry with anon_key fallback
+        if response.status_code == 401 and token and token not in (self.anon_key, "guest-token", "None", "null", "undefined"):
+            logger.warning(f"InsForge returned 401 for {method} {url} with user token. Retrying with anon_key fallback.")
+            fallback_headers = self._get_headers(token=None, with_prefer=with_prefer)
+            response = await client.request(method, url, params=params, json=json_data, headers=fallback_headers, timeout=timeout)
+            
+        return response
 
     async def create_analysis(self, analysis_id: str, region: str, token: str = None) -> None:
         """Create a new cost analysis log record with status='running'."""
@@ -53,15 +80,15 @@ class InsForgeClient:
             "issues_found": 0,
             "estimated_savings": "$0.00",
             "status": "running",
-            "created_at": datetime.utcnow().isoformat() + "Z"
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
 
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Writing initial analysis log {analysis_id} to InsForge")
-                # Using Prefer: resolution=merge-duplicates to upsert/insert cleanly
-                headers = self._get_headers(token=token, with_prefer="resolution=merge-duplicates")
-                response = await client.post(url, json=payload, headers=headers, timeout=10.0)
+                response = await self._send_request(
+                    client, "POST", url, token=token, json_data=payload, with_prefer="resolution=merge-duplicates"
+                )
                 
                 # Check response. PostgREST returns 201 Created on successful insert
                 if response.status_code not in (200, 201):
@@ -98,8 +125,9 @@ class InsForgeClient:
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Updating analysis log {analysis_id} status to COMPLETED")
-                headers = self._get_headers(token=token, with_prefer="return=minimal")
-                response = await client.patch(url, json=payload, headers=headers, timeout=10.0)
+                response = await self._send_request(
+                    client, "PATCH", url, token=token, json_data=payload, with_prefer="return=minimal"
+                )
                 
                 if response.status_code not in (200, 204):
                     logger.error(f"Failed to update analysis in InsForge: {response.status_code} - {response.text}")
@@ -123,8 +151,9 @@ class InsForgeClient:
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Updating analysis log {analysis_id} status to FAILED")
-                headers = self._get_headers(token=token, with_prefer="return=minimal")
-                response = await client.patch(url, json=payload, headers=headers, timeout=10.0)
+                response = await self._send_request(
+                    client, "PATCH", url, token=token, json_data=payload, with_prefer="return=minimal"
+                )
                 
                 if response.status_code not in (200, 204):
                     logger.error(f"Failed to fail analysis in InsForge: {response.status_code} - {response.text}")
@@ -145,8 +174,7 @@ class InsForgeClient:
         async with httpx.AsyncClient() as client:
             try:
                 logger.info("Fetching analysis history from InsForge DB")
-                headers = self._get_headers(token=token)
-                response = await client.get(url, params=params, headers=headers, timeout=10.0)
+                response = await self._send_request(client, "GET", url, token=token, params=params)
                 
                 if response.status_code != 200:
                     logger.error(f"Failed to fetch history from InsForge: {response.status_code} - {response.text}")
@@ -172,8 +200,7 @@ class InsForgeClient:
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Fetching analysis record {analysis_id} from InsForge")
-                headers = self._get_headers(token=token)
-                response = await client.get(url, params=params, headers=headers, timeout=10.0)
+                response = await self._send_request(client, "GET", url, token=token, params=params)
                 
                 if response.status_code != 200:
                     logger.error(f"Failed to fetch analysis from InsForge: {response.status_code} - {response.text}")
@@ -202,8 +229,9 @@ class InsForgeClient:
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Updating analysis_result for record {analysis_id}")
-                headers = self._get_headers(token=token, with_prefer="return=minimal")
-                response = await client.patch(url, json=payload, headers=headers, timeout=10.0)
+                response = await self._send_request(
+                    client, "PATCH", url, token=token, json_data=payload, with_prefer="return=minimal"
+                )
                 
                 if response.status_code not in (200, 204):
                     logger.error(f"Failed to update analysis_result in InsForge: {response.status_code} - {response.text}")
@@ -225,8 +253,7 @@ class InsForgeClient:
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Fetching budget config for user {user_id} from InsForge")
-                headers = self._get_headers(token=token)
-                response = await client.get(url, params=params, headers=headers, timeout=10.0)
+                response = await self._send_request(client, "GET", url, token=token, params=params)
                 
                 if response.status_code == 200:
                     records = response.json()
@@ -273,14 +300,15 @@ class InsForgeClient:
             "threshold": threshold,
             "slack_webhooks": slack_webhooks,
             "emails": emails,
-            "updated_at": datetime.utcnow().isoformat() + "Z"
+            "updated_at": datetime.now(timezone.utc).isoformat()
         }
 
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Upserting budget config for user {user_id} to InsForge")
-                headers = self._get_headers(token=token, with_prefer="resolution=merge-duplicates")
-                response = await client.post(url, json=payload, headers=headers, timeout=10.0)
+                response = await self._send_request(
+                    client, "POST", url, token=token, json_data=payload, with_prefer="resolution=merge-duplicates"
+                )
                 
                 if response.status_code not in (200, 201):
                     logger.warning(f"InsForge budget save returned status {response.status_code}. Fallback active.")
@@ -301,8 +329,7 @@ class InsForgeClient:
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Fetching alert history for user {user_id} from InsForge")
-                headers = self._get_headers(token=token)
-                response = await client.get(url, params=params, headers=headers, timeout=10.0)
+                response = await self._send_request(client, "GET", url, token=token, params=params)
                 
                 if response.status_code == 200:
                     records = response.json()
@@ -351,14 +378,15 @@ class InsForgeClient:
             "details": details,
             "status": status,
             "channels": channels,
-            "created_at": datetime.utcnow().isoformat() + "Z"
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
 
         async with httpx.AsyncClient() as client:
             try:
                 logger.info(f"Writing alert log {alert_id} to InsForge")
-                headers = self._get_headers(token=token, with_prefer="resolution=merge-duplicates")
-                response = await client.post(url, json=payload, headers=headers, timeout=10.0)
+                response = await self._send_request(
+                    client, "POST", url, token=token, json_data=payload, with_prefer="resolution=merge-duplicates"
+                )
                 
                 if response.status_code not in (200, 201):
                     logger.warning(f"InsForge alert log save returned status {response.status_code}. Fallback active.")

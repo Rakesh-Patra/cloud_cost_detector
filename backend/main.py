@@ -2,68 +2,161 @@ import os
 import logging
 import uuid
 import asyncio
-from datetime import datetime
+import json
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Literal
+import boto3
 import httpx
-from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect, Depends, Header
+from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-
-# Load environment variables at application startup
-load_dotenv()
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+try:
+    from pythonjsonlogger.json import JsonFormatter
+except ImportError:
+    from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from aws_scanner import (
     list_aws_regions,
     scan_all_resources,
     execute_remediation,
+    get_assumed_role_session,
+    generate_cloudformation_template,
+    safe_delete_ebs_volume,
+    quarantine_resource,
+    restore_quarantined_resource,
     AWSCredentialException,
     AWSRegionException,
     AWSRateLimitException,
     AWSScanException
 )
-import json
 from ai_analyzer import analyze_costs, generate_chat_response, GeminiAPIException
 from insforge_client import InsForgeClient, InsForgeException
 import database
 import anomaly_detector
 
+# Load environment variables at application startup
+load_dotenv()
+
+# Configure Structured Logging (JSON in production / CloudWatch, formatted console in local dev)
+log_handler = logging.StreamHandler()
+if os.environ.get("ENVIRONMENT", "").lower() in ("production", "prod", "staging") or os.environ.get("LOG_FORMAT", "").lower() == "json":
+    formatter = JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    log_handler.setFormatter(formatter)
+else:
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    log_handler.setFormatter(formatter)
+
+root_logger = logging.getLogger()
+root_logger.handlers = [log_handler]
+root_logger.setLevel(logging.INFO)
+
+logger = logging.getLogger("main")
+
+# Initialize Rate Limiter
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
+
 db_client = InsForgeClient()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-logger = logging.getLogger("main")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Modern FastAPI lifespan context manager for startup and graceful shutdown."""
+    database.init_db()
+    scanner_task = asyncio.create_task(daily_anomaly_scanner_loop())
+    logger.info("Application startup completed successfully with DB initialized and scheduler running.")
+    yield
+    logger.info("Application shutting down; cancelling background tasks.")
+    scanner_task.cancel()
+    try:
+        await scanner_task
+    except asyncio.CancelledError:
+        pass
+
 
 # Initialize FastAPI application
 app = FastAPI(
     title="AI Cloud Cost Detective Backend",
-    description="FastAPI Backend for querying AWS infrastructure cost data",
-    version="1.0.0"
+    description="FastAPI Multi-Tenant Backend for AWS FinOps & Cost Optimization",
+    version="2.0.0",
+    lifespan=lifespan
 )
 
+# Wire SlowAPI limiter state and error handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Configure CORS
-origins = [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
-]
+allowed_origins_str = os.environ.get("ALLOWED_ORIGINS", "")
+if allowed_origins_str:
+    origins = [orig.strip() for orig in allowed_origins_str.split(",") if orig.strip()]
+else:
+    # Default fallback for development
+    origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=True if "*" not in origins else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Instrument Prometheus metrics if available
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app)
+except Exception:
+    pass
+
+@app.get("/healthz", status_code=status.HTTP_200_OK, tags=["Health"])
+@app.get("/livez", status_code=status.HTTP_200_OK, tags=["Health"])
+async def liveness_probe():
+    """Liveness probe to confirm the container process is running."""
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+@app.get("/readyz", tags=["Health"])
+async def readiness_probe():
+    """Readiness probe to confirm database connectivity and application readiness."""
+    db_ok = database.check_db_health()
+    if not db_ok:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"status": "unhealthy", "database": "disconnected"}
+        )
+    return {"status": "ready", "database": "connected"}
+
 # Define request/response models
+
 class AnalyzeRequest(BaseModel):
     region: str = Field(..., description="The AWS region to scan, e.g., 'us-east-1'")
     analysis_id: str | None = Field(None, description="Optional UUID to track progress via WebSockets")
+    account_id: str | None = Field(None, description="Optional connected Cloud Account ID for STS AssumeRole")
+
+class ConnectAccountRequest(BaseModel):
+    account_alias: str = Field(..., description="Friendly name for the account, e.g., 'Production-AWS'")
+    aws_account_id: str = Field(..., description="12-digit AWS Account ID")
+    role_arn: str = Field(..., description="The IAM Role ARN created in customer account")
+    external_id: str = Field(..., description="The unique external ID for security handshake")
+    regions: list[str] = Field(default=["us-east-1", "us-east-2", "us-west-2", "eu-west-1"])
+
+class QuarantineApplyRequest(BaseModel):
+    resource_id: str = Field(..., description="AWS Resource ID (e.g. vol-1234, i-5678)")
+    resource_type: str = Field(..., description="Resource Type (EBS Volume, EC2 Instance)")
+    region: str = Field(..., description="AWS region")
+    reason: str = Field(..., description="Why the resource was quarantined")
+    account_id: str | None = Field(None, description="Optional connected account ID")
+    quarantine_days: int = Field(default=7, description="Number of grace period days")
+
+class QuarantineActionRequest(BaseModel):
+    item_id: str = Field(..., description="Quarantine record ID")
+    resource_id: str = Field(..., description="AWS Resource ID")
+    region: str = Field(..., description="AWS region")
+    account_id: str | None = Field(None, description="Optional connected account ID")
 
 @app.exception_handler(AWSCredentialException)
 async def credential_exception_handler(request, exc):
@@ -160,21 +253,56 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def get_current_user(authorization: str = Header(..., description="InsForge JWT Authorization Header")):
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "INVALID_TOKEN_FORMAT", "message": "Authorization header must be Bearer <token>"}
-        )
-    token = authorization.split(" ")[1]
+def is_production_env() -> bool:
+    env = os.environ.get("ENVIRONMENT", os.environ.get("APP_ENV", os.environ.get("ENV", "development"))).strip().lower()
+    return env in ("production", "prod", "staging") or os.environ.get("FAIL_CLOSED_AUTH", "").strip().lower() in ("true", "1")
+
+async def get_current_user(
+    authorization: str | None = Header(None, description="InsForge JWT Authorization Header"),
+    x_api_key: str | None = Header(None, alias="X-API-Key", description="API Key for CI/CD or automation")
+):
+    is_prod = is_production_env()
+
+    # 1. Allow authenticated API Key access (useful for microservices, CI/CD, or automated cron)
+    api_secret = os.environ.get("API_SECRET_KEY")
+    if x_api_key and api_secret and x_api_key.strip() == api_secret.strip():
+        return {
+            "user": {
+                "id": "system-api-key",
+                "email": "admin@api.internal",
+                "role": "admin"
+            },
+            "token": "api-key-authorized"
+        }
+
+    if not authorization or not authorization.startswith("Bearer "):
+        if is_prod:
+            logger.warning("Unauthenticated request blocked in production environment (fail-closed)")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "AUTHENTICATION_REQUIRED", "message": "Authorization header with Bearer token or valid X-API-Key is required."}
+            )
+        return {"user": {"email": "guest@local.user", "role": "devops"}, "token": "guest-token"}
+    
+    token = authorization.split(" ")[1].strip()
+    if not token:
+        if is_prod:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "AUTHENTICATION_REQUIRED", "message": "Bearer token must not be empty."}
+            )
+        return {"user": {"email": "guest@local.user"}, "token": "guest-token"}
     
     project_url = os.environ.get("INSFORGE_PROJECT_URL")
     anon_key = os.environ.get("INSFORGE_ANON_KEY")
     if not project_url or not anon_key:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "AUTH_CONFIG_ERROR", "message": "InsForge URL or Anon Key is not set on the server"}
-        )
+        if is_prod:
+            logger.error("Authentication configuration missing in production environment")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"error": "AUTH_CONFIGURATION_ERROR", "message": "Authentication service is not properly configured."}
+            )
+        return {"user": {"email": "guest@local.user"}, "token": None}
         
     url = f"{project_url.rstrip('/')}/api/auth/sessions/current"
     headers = {
@@ -186,54 +314,158 @@ async def get_current_user(authorization: str = Header(..., description="InsForg
         try:
             response = await client.get(url, headers=headers, timeout=10.0)
             if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail={"error": "UNAUTHORIZED", "message": "Invalid or expired session token"}
-                )
+                if is_prod:
+                    logger.warning(f"Invalid session token in production environment (status {response.status_code})")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail={"error": "INVALID_SESSION", "message": "Invalid or expired session token."}
+                    )
+                logger.warning(f"InsForge session check returned status {response.status_code}, using dev fallback user")
+                return {"user": {"email": "dev@local.user"}, "token": None}
             return {
                 "user": response.json().get("user"),
                 "token": token
             }
         except httpx.RequestError as e:
-            logger.exception("Error calling InsForge Auth")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={"error": "AUTH_SERVICE_UNAVAILABLE", "message": f"Could not connect to authentication service: {str(e)}"}
-            )
+            if is_prod:
+                logger.error(f"Error connecting to InsForge Auth in production: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={"error": "AUTH_SERVICE_UNAVAILABLE", "message": "Authentication service is temporarily unavailable."}
+                )
+            logger.warning(f"Error connecting to InsForge Auth ({e}), using dev fallback user")
+            return {"user": {"email": "dev@local.user"}, "token": None}
     
 
-@app.get("/api/regions", status_code=status.HTTP_200_OK)
-async def get_regions():
+def get_user_org_id(user: dict) -> str:
+    user_info = user.get("user") or {}
+    return str(user_info.get("id") or user_info.get("email") or "default_org")
+
+def get_user_role(user: dict) -> str:
     """
-    Retrieve a list of active AWS regions.
-    Raises 401/400/429/500 if the AWS API calls fail.
+    Extracts the user's role securely:
+    1. Production Mode: Strictly reads verified JWT metadata or database profile role.
+       Defaults to 'viewer' (Least Privilege Principle) if no role is explicitly assigned.
+    2. Development Mode: Allows email keywords (admin@, devops@, viewer@) for developer testing.
+    """
+    user_info = user.get("user") or {}
+    
+    # 1. Check verified DB/JWT role
+    if user_info.get("role"):
+        return str(user_info["role"]).lower()
+        
+    metadata = user_info.get("user_metadata") or user_info.get("metadata") or {}
+    if metadata.get("role"):
+        return str(metadata["role"]).lower()
+    
+    # 2. Production Security: Fail-safe default to read-only 'viewer'
+    if is_production_env():
+        return "viewer"
+
+    # 3. Development / Local Testing convenience fallback
+    email = str(user_info.get("email", "")).lower()
+    if "admin" in email:
+        return "admin"
+    if "viewer" in email or "analyst" in email:
+        return "viewer"
+    return "devops"
+
+def require_roles(allowed_roles: list[str]):
+    """FastAPI dependency to enforce Role-Based Access Control (RBAC)."""
+    async def role_checker(user: dict = Depends(get_current_user)):
+        role = get_user_role(user)
+        if role not in allowed_roles:
+            logger.warning(f"Access denied for user {user.get('user', {}).get('email')} with role '{role}'. Required: {allowed_roles}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "INSUFFICIENT_PERMISSIONS",
+                    "message": f"Role '{role}' is not authorized to perform this action. Required role(s): {', '.join(allowed_roles)}."
+                }
+            )
+        return user
+    return role_checker
+
+@app.get("/api/me", status_code=status.HTTP_200_OK, tags=["Auth"])
+async def get_me(user: dict = Depends(get_current_user)):
+    """Returns the current user profile and RBAC role."""
+    user_info = user.get("user") or {}
+    role = get_user_role(user)
+    return {
+        "email": user_info.get("email", "guest@local.user"),
+        "id": user_info.get("id"),
+        "role": role
+    }
+
+
+@app.get("/api/regions", status_code=status.HTTP_200_OK)
+async def get_regions(user: dict = Depends(get_current_user)):
+    """
+    Retrieve a list of active AWS regions. Fallback to standard AWS regions if listing fails.
     """
     logger.info("Fetching active AWS regions")
     try:
         regions = list_aws_regions()
         return {"regions": regions}
-    except AWSCredentialException as e:
-        await credential_exception_handler(None, e)
-    except AWSRegionException as e:
-        await region_exception_handler(None, e)
-    except AWSRateLimitException as e:
-        await rate_limit_exception_handler(None, e)
-    except AWSScanException as e:
-        await scan_exception_handler(None, e)
+    except Exception as e:
+        logger.warning(f"Could not dynamically list AWS regions ({e}), returning default AWS region list")
+        default_regions = [
+            "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+            "ap-south-1", "ap-northeast-1", "ap-southeast-1", "ap-southeast-2",
+            "eu-west-1", "eu-central-1", "sa-east-1"
+        ]
+        return {"regions": default_regions}
 
 
 @app.websocket("/ws/progress/{analysis_id}")
-async def websocket_endpoint(websocket: WebSocket, analysis_id: str):
+async def websocket_endpoint(websocket: WebSocket, analysis_id: str, token: str | None = None):
+    # Verify token
+    if not token:
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+        
+    project_url = os.environ.get("INSFORGE_PROJECT_URL")
+    anon_key = os.environ.get("INSFORGE_ANON_KEY")
+    if not project_url or not anon_key:
+        await websocket.accept()
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        return
+        
+    url = f"{project_url.rstrip('/')}/api/auth/sessions/current"
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {token}"
+    }
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, timeout=10.0)
+            if response.status_code != 200:
+                await websocket.accept()
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+        except Exception as e:
+            logger.error(f"WebSocket auth failed: {e}")
+            await websocket.accept()
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+            return
+
     await manager.connect(websocket, analysis_id)
     try:
-        # Keep connection open. WebSockets expect us to read from them or wait
+        # Keep connection open with active heartbeat ping/pong
         while True:
-            # Just receive text to keep the socket alive
-            await websocket.receive_text()
+            try:
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=35.0)
+                if msg.strip().lower() == "ping":
+                    await websocket.send_text("pong")
+            except asyncio.TimeoutError:
+                # Send keepalive ping to maintain connection through ELB / NAT Gateways
+                await websocket.send_text(json.dumps({"type": "ping", "timestamp": datetime.now(timezone.utc).isoformat()}))
     except WebSocketDisconnect:
         manager.disconnect(websocket, analysis_id)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.debug(f"WebSocket closed for {analysis_id}: {e}")
         manager.disconnect(websocket, analysis_id)
 
 
@@ -251,11 +483,11 @@ async def get_history(user: dict = Depends(get_current_user)):
 
 
 @app.post("/api/analyze", status_code=status.HTTP_200_OK)
-async def analyze_region(payload: AnalyzeRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def analyze_region(request: Request, payload: AnalyzeRequest, user: dict = Depends(get_current_user)):
     """
     Scan active cost-driving AWS resources in the specified region, perform AI-powered cost analysis,
-    and persist results to InsForge Database. Progress is streamed via WebSockets.
-    Accepts: { "region": "<region_name>", "analysis_id": "<uuid>" }
+    and persist results to InsForge Database. Supports STS AssumeRole for multi-tenant accounts.
     """
     region = payload.region.strip()
     if not region:
@@ -265,36 +497,65 @@ async def analyze_region(payload: AnalyzeRequest, user: dict = Depends(get_curre
         )
         
     analysis_id = payload.analysis_id or str(uuid.uuid4())
-    logger.info(f"Initiating resource scan for region: {region} with analysis_id: {analysis_id}")
+    logger.info(f"Initiating resource scan for region: {region} with analysis_id: {analysis_id} (account: {payload.account_id})")
     
+    # 1. Establish AWS Session (dynamic STS AssumeRole if account_id is supplied)
+    session = None
+    if payload.account_id:
+        acc = database.get_cloud_account(payload.account_id)
+        if acc:
+            try:
+                await manager.broadcast(analysis_id, f"Connecting to AWS Account ({acc.get('account_alias')}) via STS AssumeRole...")
+                user_email = user.get("user", {}).get("email") or "finops-user"
+                import re
+                safe_session_name = re.sub(r'[^a-zA-Z0-9+=,.@-]', '-', user_email)[:64]
+                session = get_assumed_role_session(acc["role_arn"], acc["external_id"], session_name=safe_session_name)
+                database.update_cloud_account_last_scanned(payload.account_id)
+            except Exception as sts_err:
+                logger.error(f"Failed to assume role for account {payload.account_id}: {sts_err}")
+                await manager.broadcast(analysis_id, f"STS Authentication failed: {str(sts_err)}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=f"Failed to authenticate with AWS Account via STS: {str(sts_err)}"
+                )
+
     try:
         # Step 1: Initializing clients
         await manager.broadcast(analysis_id, "Initializing AWS clients...")
-        await db_client.create_analysis(analysis_id, region, token=user["token"])
+        try:
+            await db_client.create_analysis(analysis_id, region, token=user["token"])
+        except Exception as db_err:
+            logger.warning(f"InsForge create_analysis notice: {db_err}")
         
-        # Step 2: Scanning resources
-        await manager.broadcast(analysis_id, f"Scanning EC2, EBS, and RDS resources in {region}...")
-        resources = scan_all_resources(region)
+        # Step 2: Scanning resources with 14-day CloudWatch telemetry
+        await manager.broadcast(analysis_id, f"Scanning EC2, EBS, RDS & 14-day telemetry in {region}...")
+        if session is not None:
+            resources = await asyncio.to_thread(scan_all_resources, region, session)
+        else:
+            resources = await asyncio.to_thread(scan_all_resources, region)
         
-        # Step 3: AI analysis
-        await manager.broadcast(analysis_id, "Generating structured cost analysis via Gemini AI...")
-        analysis = analyze_costs(resources)
+        # Step 3: AI analysis with Tier 1 deterministic pricing filter
+        await manager.broadcast(analysis_id, "Running precision pricing engine & Gemini AI synthesis...")
+        analysis = await asyncio.to_thread(analyze_costs, resources, region)
         
         # Step 4: Persisting results
-        await manager.broadcast(analysis_id, "Persisting audit metrics to InsForge Cloud...")
+        await manager.broadcast(analysis_id, "Persisting audit metrics...")
         
         issues_found = len(analysis.get('recommendations', []))
         total_savings = sum(item.get('estimated_savings', 0.0) for item in analysis.get('recommendations', []))
         estimated_savings = f"${total_savings:.2f}"
         
-        await db_client.update_analysis_success(
-            analysis_id=analysis_id,
-            resources_scanned=len(resources),
-            issues_found=issues_found,
-            estimated_savings=estimated_savings,
-            analysis_result=analysis,
-            token=user["token"]
-        )
+        try:
+            await db_client.update_analysis_success(
+                analysis_id=analysis_id,
+                resources_scanned=len(resources),
+                issues_found=issues_found,
+                estimated_savings=estimated_savings,
+                analysis_result=analysis,
+                token=user["token"]
+            )
+        except Exception as db_err:
+            logger.warning(f"InsForge update_analysis_success notice: {db_err}")
         
         # Step 5: Complete
         await manager.broadcast(analysis_id, "Analysis complete")
@@ -302,6 +563,7 @@ async def analyze_region(payload: AnalyzeRequest, user: dict = Depends(get_curre
         return {
             "analysis_id": analysis_id,
             "region": region,
+            "account_id": payload.account_id,
             "resources": resources,
             "count": len(resources),
             "analysis": analysis
@@ -339,24 +601,43 @@ class RemediateRequest(BaseModel):
     resource_id: str = Field(..., description="The ID of the target resource to remediate")
     issue_type: str = Field(..., description="The cost optimization issue type")
     region: str = Field(..., description="The AWS region of the target resource")
+    account_id: str | None = Field(None, description="Optional connected cloud account ID")
 
 
 @app.post("/api/remediate", status_code=status.HTTP_200_OK)
-async def remediate_resource(payload: RemediateRequest, user: dict = Depends(get_current_user)):
+async def remediate_resource(payload: RemediateRequest, user: dict = Depends(require_roles(["admin", "devops"]))):
     """
     Executes cost-saving remediation for a specific resource, updates the database log,
-    and returns the execution status.
+    and returns the execution status. Supports snapshot-before-delete safety.
     """
     logger.info(f"Remediation request received for resource {payload.resource_id} under analysis {payload.analysis_id}")
     
+    session = None
+    if payload.account_id:
+        acc = database.get_cloud_account(payload.account_id)
+        if acc:
+            user_email = user.get("user", {}).get("email") or "finops-user"
+            import re
+            safe_session_name = re.sub(r'[^a-zA-Z0-9+=,.@-]', '-', user_email)[:64]
+            session = get_assumed_role_session(acc["role_arn"], acc["external_id"], session_name=safe_session_name)
+
     # 1. Execute the remediation via boto3 (run in threadpool to avoid blocking event loop)
     try:
-        result = await asyncio.to_thread(
-            execute_remediation,
-            payload.region,
-            payload.resource_id,
-            payload.issue_type
-        )
+        if session is not None:
+            result = await asyncio.to_thread(
+                execute_remediation,
+                payload.region,
+                payload.resource_id,
+                payload.issue_type,
+                session
+            )
+        else:
+            result = await asyncio.to_thread(
+                execute_remediation,
+                payload.region,
+                payload.resource_id,
+                payload.issue_type
+            )
     except ValueError as e:
         logger.error(f"Invalid remediation parameter: {str(e)}")
         raise HTTPException(
@@ -367,44 +648,208 @@ async def remediate_resource(payload: RemediateRequest, user: dict = Depends(get
             }
         )
     
-    # 2. Retrieve analysis record
-    record = await db_client.get_analysis(payload.analysis_id, token=user["token"])
-    analysis_result = record.get("analysis_result")
-    if not analysis_result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": "ANALYSIS_RESULT_NOT_FOUND",
-                "message": "No analysis result found for this audit log."
-            }
-        )
-        
-    recommendations = analysis_result.get("recommendations", [])
-    found = False
-    for rec in recommendations:
-        if rec.get("resource_id") == payload.resource_id:
-            rec["remediated"] = True
-            rec["remediated_at"] = datetime.utcnow().isoformat() + "Z"
-            found = True
-            break
-            
-    if not found:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": "RESOURCE_NOT_FOUND_IN_ANALYSIS",
-                "message": f"Resource {payload.resource_id} not found in the recommendations list."
-            }
-        )
-        
-    # 3. Patch the updated analysis_result back to the database
-    await db_client.update_analysis_result(payload.analysis_id, analysis_result, token=user["token"])
+    # 2. Retrieve analysis record and update remediation status
+    remediated_at = datetime.now(timezone.utc).isoformat()
+    token = user.get("token") if isinstance(user, dict) else None
     
+    try:
+        record = await db_client.get_analysis(payload.analysis_id, token=token)
+        analysis_result = record.get("analysis_result") if record else None
+        if analysis_result:
+            recommendations = analysis_result.get("recommendations", [])
+            for rec in recommendations:
+                if rec.get("resource_id") == payload.resource_id:
+                    rec["remediated"] = True
+                    rec["remediated_at"] = remediated_at
+                    if isinstance(result, dict) and result.get("snapshot_id"):
+                        rec["snapshot_id"] = result.get("snapshot_id")
+                    break
+
+            # 3. Patch the updated analysis_result back to the database
+            await db_client.update_analysis_result(payload.analysis_id, analysis_result, token=token)
+    except Exception as db_err:
+        logger.warning(f"InsForge analysis update notice during remediation of {payload.resource_id}: {db_err}")
+
     return {
         "success": True,
-        "message": result.get("message", "Remediation executed successfully."),
         "resource_id": payload.resource_id,
-        "remediated_at": datetime.utcnow().isoformat() + "Z"
+        "message": result.get("message") if isinstance(result, dict) else "Remediation executed successfully.",
+        "snapshot_id": result.get("snapshot_id") if isinstance(result, dict) else None,
+        "remediated_at": remediated_at
+    }
+
+
+# =====================================================================
+# --- Phase 1: Multi-Tenant Cloud Accounts (STS AssumeRole) API ---
+# =====================================================================
+
+@app.get("/api/v1/accounts/cfn-template", status_code=status.HTTP_200_OK, tags=["Cloud Accounts"])
+async def get_cfn_template(user: dict = Depends(get_current_user)):
+    """
+    Generates a secure 1-Click AWS CloudFormation template and direct AWS Console link.
+    """
+    external_id = f"ext_{uuid.uuid4().hex[:16]}"
+    saas_account_id = os.environ.get("AWS_SAAS_ACCOUNT_ID", "123456789012")
+    
+    cfn_yaml = generate_cloudformation_template(saas_account_id, external_id)
+    
+    # 1-Click AWS Console Quick Create URL
+    aws_quick_create_url = (
+        f"https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review"
+        f"?stackName=CloudCostDetective-AuditIntegration"
+        f"&param_SaaSAccountId={saas_account_id}"
+        f"&param_ExternalId={external_id}"
+    )
+
+    return {
+        "external_id": external_id,
+        "saas_account_id": saas_account_id,
+        "cfn_yaml": cfn_yaml,
+        "quick_create_url": aws_quick_create_url
+    }
+
+@app.post("/api/v1/accounts/connect", status_code=status.HTTP_201_CREATED, tags=["Cloud Accounts"])
+async def connect_cloud_account(payload: ConnectAccountRequest, user: dict = Depends(require_roles(["admin"]))):
+    """
+    Validates STS AssumeRole handshake and saves the connected AWS account (Admin only).
+    """
+    account_id = f"acc_{uuid.uuid4().hex[:12]}"
+    user_org = get_user_org_id(user)
+    
+    # Verify STS Handshake
+    try:
+        session = get_assumed_role_session(payload.role_arn, payload.external_id)
+        # Test STS identity
+        sts = session.client('sts')
+        identity = sts.get_caller_identity()
+        logger.info(f"Verified STS AssumeRole connection for {payload.aws_account_id}: {identity.get('Arn')}")
+    except Exception as e:
+        logger.warning(f"Could not verify live STS connection ({e}). Proceeding in registered mode.")
+
+    saved_acc = database.save_cloud_account(
+        account_id=account_id,
+        org_id=user_org,
+        account_alias=payload.account_alias,
+        aws_account_id=payload.aws_account_id,
+        role_arn=payload.role_arn,
+        external_id=payload.external_id,
+        regions=payload.regions
+    )
+    return saved_acc
+
+@app.get("/api/v1/accounts", status_code=status.HTTP_200_OK, tags=["Cloud Accounts"])
+async def list_accounts(user: dict = Depends(get_current_user)):
+    """List all connected AWS accounts for the user organization."""
+    user_org = get_user_org_id(user)
+    accounts = database.list_cloud_accounts(user_org)
+    return {"accounts": accounts}
+
+@app.delete("/api/v1/accounts/{account_id}", status_code=status.HTTP_200_OK, tags=["Cloud Accounts"])
+async def delete_account(account_id: str, user: dict = Depends(require_roles(["admin"]))):
+    """Disconnect an AWS cloud account (Admin only)."""
+    user_org = get_user_org_id(user)
+    success = database.delete_cloud_account(account_id, user_org)
+    if not success:
+        raise HTTPException(status_code=404, detail="Cloud account not found.")
+    return {"success": True, "message": "Account disconnected."}
+
+
+# =====================================================================
+# --- Phase 1: Tag-and-Wait Quarantine & Safe Deletion API ---
+# =====================================================================
+
+@app.post("/api/v1/quarantine/apply", status_code=status.HTTP_201_CREATED, tags=["Quarantine"])
+async def apply_quarantine(payload: QuarantineApplyRequest, user: dict = Depends(require_roles(["admin", "devops"]))):
+    """
+    Tags an AWS resource with 7-day quarantine metadata and registers it in the quarantine ledger.
+    """
+    user_org = get_user_org_id(user)
+    session = None
+    if payload.account_id:
+        acc = database.get_cloud_account(payload.account_id)
+        if acc:
+            session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
+
+    # Apply AWS tags
+    try:
+        if session:
+            await asyncio.to_thread(
+                quarantine_resource,
+                session,
+                payload.region,
+                payload.resource_id,
+                payload.resource_type,
+                payload.quarantine_days
+            )
+    except Exception as e:
+        logger.warning(f"Could not apply AWS tags ({e}). Saving record to local ledger.")
+
+    item_id = f"quar_{uuid.uuid4().hex[:12]}"
+    record = database.save_quarantine_item(
+        item_id=item_id,
+        org_id=user_org,
+        account_id=payload.account_id or "default",
+        resource_id=payload.resource_id,
+        resource_type=payload.resource_type,
+        region=payload.region,
+        reason=payload.reason,
+        quarantine_days=payload.quarantine_days
+    )
+    return record
+
+@app.get("/api/v1/quarantine/items", status_code=status.HTTP_200_OK, tags=["Quarantine"])
+async def list_quarantine(status_filter: str | None = None, user: dict = Depends(get_current_user)):
+    """Retrieve quarantine inventory items."""
+    user_org = get_user_org_id(user)
+    items = database.list_quarantine_items(user_org, status_filter)
+    return {"items": items}
+
+@app.post("/api/v1/quarantine/dismiss", status_code=status.HTTP_200_OK, tags=["Quarantine"])
+async def dismiss_quarantine(payload: QuarantineActionRequest, user: dict = Depends(require_roles(["admin", "devops"]))):
+    """
+    Removes quarantine tag and whitelists resource.
+    """
+    user_org = get_user_org_id(user)
+    session = None
+    if payload.account_id:
+        acc = database.get_cloud_account(payload.account_id)
+        if acc:
+            session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
+
+    if session:
+        try:
+            await asyncio.to_thread(restore_quarantined_resource, session, payload.region, payload.resource_id)
+        except Exception as e:
+            logger.warning(f"AWS tag removal warning: {e}")
+
+    database.update_quarantine_status(payload.item_id, "restored", org_id=user_org)
+    return {"success": True, "message": f"Resource {payload.resource_id} restored and whitelisted."}
+
+@app.post("/api/v1/quarantine/safe-delete", status_code=status.HTTP_200_OK, tags=["Quarantine"])
+async def safe_delete_quarantined(payload: QuarantineActionRequest, user: dict = Depends(require_roles(["admin"]))):
+    """
+    Enterprise Safeguard: Creates a backup snapshot before permanently deleting volume.
+    """
+    user_org = get_user_org_id(user)
+    session = None
+    if payload.account_id:
+        acc = database.get_cloud_account(payload.account_id)
+        if acc:
+            session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
+
+    snapshot_id = None
+    try:
+        res = await asyncio.to_thread(safe_delete_ebs_volume, session or boto3.Session(), payload.region, payload.resource_id)
+        snapshot_id = res.get("snapshot_id")
+    except Exception as e:
+        logger.error(f"Safe delete failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Safe deletion failed: {str(e)}")
+
+    database.update_quarantine_status(payload.item_id, "deleted", snapshot_id=snapshot_id, org_id=user_org)
+    return {
+        "success": True,
+        "snapshot_id": snapshot_id,
+        "message": f"Safely deleted {payload.resource_id}. Snapshot {snapshot_id} created for rollback."
     }
 
 
@@ -421,7 +866,8 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/api/chat", status_code=status.HTTP_200_OK)
-async def chat_with_finops_assistant(payload: ChatRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("20/minute")
+async def chat_with_finops_assistant(request: Request, payload: ChatRequest, user: dict = Depends(get_current_user)):
     """
     Endpoint to converse with the Cloud FinOps AI Assistant about resource cost and optimization.
     """
@@ -453,18 +899,11 @@ class BudgetConfigRequest(BaseModel):
     emails: List[str] = Field(default_factory=list, description="Notification email list")
 
 
-@app.on_event("startup")
-async def startup_event():
-    database.init_db()
-    asyncio.create_task(daily_anomaly_scanner_loop())
-
-
 async def run_scheduled_anomaly_scan():
     """Daily scheduled background scan task."""
     logger.info("Running daily scheduled cost anomaly scan...")
-    import sqlite3
     try:
-        conn = sqlite3.connect(database.DB_PATH)
+        conn, db_type = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT user_id, threshold, slack_webhooks, emails FROM budget_configs")
         rows = cursor.fetchall()
@@ -491,9 +930,10 @@ async def run_scheduled_anomaly_scan():
             anomaly_date = latest_anomaly['date']
             
             # Deduplicate
-            conn_alert = sqlite3.connect(database.DB_PATH)
+            conn_alert, alert_db_type = database.get_connection()
             cur_alert = conn_alert.cursor()
-            cur_alert.execute("SELECT id FROM alert_logs WHERE user_id = ? AND date = ?", (user_id, anomaly_date))
+            param_placeholder = "%s" if alert_db_type == "postgres" else "?"
+            cur_alert.execute(f"SELECT id FROM alert_logs WHERE user_id = {param_placeholder} AND date = {param_placeholder}", (user_id, anomaly_date))
             existing = cur_alert.fetchone()
             conn_alert.close()
             
@@ -526,9 +966,41 @@ async def run_scheduled_anomaly_scan():
 
 async def daily_anomaly_scanner_loop():
     logger.info("Starting daily anomaly scanner background scheduler loop")
+    
+    # Check if we should run an initial scan on startup
+    try:
+        conn, db_type = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT created_at FROM alert_logs ORDER BY created_at DESC LIMIT 1")
+        row = cursor.fetchone()
+        conn.close()
+        
+        should_run_now = True
+        if row:
+            last_run_str = row[0].rstrip('Z').split('.')[0]
+            last_run = datetime.strptime(last_run_str, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - last_run < timedelta(hours=24):
+                should_run_now = False
+                logger.info(f"Last anomaly scan was run at {row[0]}, which is less than 24 hours ago. Skipping initial startup scan.")
+        
+        if should_run_now:
+            logger.info("No recent scans found or last scan is older than 24 hours. Running startup anomaly scan.")
+            await run_scheduled_anomaly_scan()
+    except Exception as e:
+        logger.error(f"Error checking last scan run on startup: {str(e)}")
+        # Run anyway on error to be safe
+        await run_scheduled_anomaly_scan()
+
     while True:
         try:
-            await asyncio.sleep(24 * 60 * 60)
+            # Calculate sleep seconds to align with UTC midnight
+            now = datetime.now(timezone.utc)
+            tomorrow = now + timedelta(days=1)
+            next_midnight = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0, tzinfo=timezone.utc)
+            sleep_seconds = (next_midnight - now).total_seconds()
+            
+            logger.info(f"Next scheduled anomaly scan in {sleep_seconds:.1f} seconds (at UTC midnight {next_midnight.strftime('%Y-%m-%d %H:%M:%S')})")
+            await asyncio.sleep(sleep_seconds)
             await run_scheduled_anomaly_scan()
         except asyncio.CancelledError:
             logger.info("Daily anomaly scanner scheduler loop cancelled")
@@ -536,6 +1008,7 @@ async def daily_anomaly_scanner_loop():
         except Exception as e:
             logger.error(f"Error in anomaly scanner scheduler loop: {str(e)}")
             await asyncio.sleep(300)
+
 
 
 @app.get("/api/budgets", status_code=status.HTTP_200_OK)
@@ -639,7 +1112,7 @@ async def trigger_budgets_scan(user: dict = Depends(get_current_user)):
         else:
             daily_base = max(5.0, threshold / 30.0)
             test_anomaly = {
-                "date": datetime.utcnow().date().strftime('%Y-%m-%d'),
+                "date": datetime.now(timezone.utc).date().strftime('%Y-%m-%d'),
                 "amount": round(daily_base * 2.2, 2),
                 "average": round(daily_base, 2),
                 "percent_increase": 120.0
@@ -683,4 +1156,6 @@ async def trigger_budgets_scan(user: dict = Depends(get_current_user)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)  # nosec B104
+    env_mode = os.getenv("ENV", "prod").lower()
+    should_reload = env_mode in ("dev", "development")
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=should_reload)  # nosec B104

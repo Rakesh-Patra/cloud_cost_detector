@@ -12,7 +12,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
         continue-on-error: true

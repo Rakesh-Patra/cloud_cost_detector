@@ -6,18 +6,22 @@ WORKDIR /app
 COPY requirements.txt .
 # Install packages into a prefix directory
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN mkdir -p /app/data
 
 
 # ─── Stage 2: Final (Distroless) ────────────────────────────────────────────
 FROM gcr.io/distroless/python3-debian12
 
-# Use built-in nonroot user
-USER nonroot
+# Use explicit nonroot user ID (65532) for K8s security context parity
+USER 65532:65532
 
 WORKDIR /app
 
 # Copy the entire install tree to the non-root user's local directory
 COPY --from=builder --chown=nonroot:nonroot /install /home/nonroot/.local
+
+# Copy database directory from builder with correct ownership
+COPY --from=builder --chown=nonroot:nonroot /app/data /app/data
 
 # Copy application source code
 COPY --chown=nonroot:nonroot . .

@@ -17,6 +17,11 @@ runs:
     - name: Post to Slack
       shell: bash
       run: |
+        if [ -z "${{ inputs.slack-webhook-url }}" ]; then
+          echo "No Slack webhook URL provided. Skipping notification."
+          exit 0
+        fi
+        
         COLOR="#FF0000"
         EMOJI="❌"
         if [ "${{ inputs.status }}" = "success" ]; then

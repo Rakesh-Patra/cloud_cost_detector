@@ -28,18 +28,22 @@ This directory houses the client-side single-page web app built on **Vite**, **R
 ## 🚀 Getting Started
 
 ### 📦 Prerequisites
+
 - **Node.js** (v18 or higher recommended)
 - **npm** or **yarn** package manager
 
 ### 🛠️ Quick Local Setup
 
 1. **Install Dependencies:**
+
    ```bash
    npm install
    ```
 
 2. **Configure Environment Variables:**
+
    Create a `.env` file in the `frontend/` root folder:
+
    ```env
    VITE_BACKEND_URL=http://localhost:8000
    VITE_INSFORGE_PROJECT_URL=your_insforge_project_url
@@ -47,15 +51,19 @@ This directory houses the client-side single-page web app built on **Vite**, **R
    ```
 
 3. **Start Dev Server:**
+
    ```bash
    npm run dev
    ```
-   The application will start on **http://localhost:5173**.
+
+   The application will start on **<http://localhost:5173>**.
 
 4. **Production Build:**
+
    ```bash
    npm run build
    ```
+
    Build outputs will compile to the `dist/` directory.
 
 ---

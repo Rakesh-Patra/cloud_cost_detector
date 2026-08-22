@@ -1,0 +1,28 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-namespace-quota
+spec:
+  rules:
+    - name: generate-resource-quota
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              names:
+                - cloud-cost-dev
+      generate:
+        apiVersion: v1
+        kind: ResourceQuota
+        name: dev-namespace-quota
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            hard:
+              requests.cpu: "4"
+              requests.memory: 8Gi
+              limits.cpu: "8"
+              limits.memory: 16Gi
+              pods: "20"
