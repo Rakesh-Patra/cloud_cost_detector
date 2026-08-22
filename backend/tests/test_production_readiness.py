@@ -38,10 +38,11 @@ def test_token_estimation_and_usage_logging():
     log_ai_usage(len(prompt), "Here is the cost analysis summary.")
 
 def test_x_api_key_authentication():
-    with patch.dict("os.environ", {"API_SECRET_KEY": "secret-prod-key-12345", "ENVIRONMENT": "production"}):
+    test_key = "test-api-key-for-unit-tests-only"  # nosec - not a real secret
+    with patch.dict("os.environ", {"API_SECRET_KEY": test_key, "ENVIRONMENT": "production"}):
         local_client = TestClient(app)
         # Test with valid X-API-Key
-        response = local_client.get("/api/regions", headers={"X-API-Key": "secret-prod-key-12345"})
+        response = local_client.get("/api/regions", headers={"X-API-Key": test_key})
         assert response.status_code == 200
 
         # Test with invalid X-API-Key

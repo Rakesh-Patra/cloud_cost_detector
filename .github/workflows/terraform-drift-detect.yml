@@ -61,16 +61,16 @@ jobs:
           set -e
           if [ $exit_code -eq 2 ]; then
             echo "DRIFT_DETECTED=true" >> $GITHUB_ENV
-            echo "Drift detected in ${{ matrix.env_dir }}"
-            exit 2
+            echo "::warning::Drift detected in ${{ matrix.env_dir }} — infrastructure has deviated from state."
+            exit 0
           elif [ $exit_code -eq 0 ]; then
-            echo "No drift detected."
+            echo "No drift detected in ${{ matrix.env_dir }}."
           else
-            echo "Error running drift check."
+            echo "::error::Terraform plan failed in ${{ matrix.env_dir }} with exit code $exit_code"
             exit $exit_code
           fi
       - name: Notify Slack on Drift / Failure
-        if: failure() && env.DRIFT_DETECTED == 'true'
+        if: env.DRIFT_DETECTED == 'true'
         uses: ./.github/actions/slack-notify
         with:
           slack-webhook-url: ${{ env.SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK_URL }}

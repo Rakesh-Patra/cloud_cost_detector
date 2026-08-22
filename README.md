@@ -50,26 +50,31 @@ The platform is designed with an **Enterprise-First Security Model**: zero perma
 ## 🚀 Key Platform Features
 
 ### 1. Zero-Key Multi-Tenant AWS Onboarding (`sts:AssumeRole`)
+
 - **1-Click CloudFormation Launcher:** Deploy a read-only `SecurityAudit` IAM Role directly into your AWS account with a unique, cryptographically generated `ExternalId` in under 60 seconds.
 - **Zero Permanent Credentials:** No root AWS Access Keys or Secrets are ever saved in the platform database. Temporary STS session tokens are created dynamically per scan.
 - **Multi-Account Selector:** Switch and scan across different AWS environments (Production, Staging, Dev) seamlessly.
 
 ### 2. 14-Day CloudWatch Telemetry & Precision Pricing Engine
+
 - **False-Positive Elimination:** Ingests 14 days of hourly P95/P99 CPU utilization and Network I/O metrics to differentiate between true idle compute ($< 2\%$ CPU) and periodic batch workloads.
 - **Precision Pricing Model:** Computes exact regional On-Demand rates, `gp2` $\rightarrow$ `gp3` modernization deltas (\$0.10 vs \$0.08/GB-mo), and idle Elastic IP fees.
 - **Two-Tier Processing:** Fast Python deterministic filtering scores 100% of resources in milliseconds, sending only anomalies to Gemini AI—slashing token consumption by 95%.
 
 ### 3. Enterprise Safety Guardrails & Quarantine Dashboard
+
 - **Snapshot-Before-Delete:** Every volume termination automatically creates an encrypted, tagged backup snapshot (`CreatedBy: CloudCostDetective`) with an auto-expiry policy before deletion.
 - **7-Day "Tag-and-Wait" Quarantine:** Resources flagged for deletion receive AWS tags (`FinOps_Status=Quarantined`) with a 7-day grace period.
 - **Quarantine Hub (`/quarantine`):** View quarantined assets, monitor remaining days, and 1-click **"Keep & Whitelist"** or **"Safe Delete Now"**.
 
 ### 4. Detailed Cost Analysis & Terraform IaC Generation
+
 - **Optimization Cards:** Displays potential savings per resource with severity badges and accurate dollar amounts.
 - **Terraform HCL Fixes:** Provides copy-pasteable Terraform configuration code to remediate findings via Infrastructure-as-Code without creating state drift.
 - **Automated CLI Remediation:** 1-click execution to upgrade storage or stop idle compute directly from the UI.
 
 ### 5. Budgets & Spend Anomaly Alerts
+
 - **Guardrails:** Configure monthly caps and list email distribution channels.
 - **Spend Trends:** View 14-day spending charts featuring highlight indicators on anomalous surges.
 - **Automated Notifications:** Dispatches real-time email alerts upon threshold breaches.
