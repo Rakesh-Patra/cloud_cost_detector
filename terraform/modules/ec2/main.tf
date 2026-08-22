@@ -142,6 +142,10 @@ resource "aws_instance" "app" {
     Environment = var.environment
     Project     = var.project_name
   }
+
+  lifecycle {
+    ignore_changes = [ami, user_data]
+  }
 }
 
 resource "aws_eip" "app" {
