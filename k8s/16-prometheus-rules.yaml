@@ -1,0 +1,52 @@
+﻿apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cloud-cost-prometheus-rules
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-detective
+    app.kubernetes.io/version: "2.0.0"
+    role: alert-rules
+spec:
+  groups:
+    - name: cloud-cost-service-alerts
+      rules:
+        - alert: HighHTTP5xxErrorRate
+          expr: (sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 1
+          for: 2m
+          labels:
+            severity: critical
+            team: finops-devops
+          annotations:
+            summary: "High HTTP 5xx error rate on {{ $labels.instance }}"
+            description: "HTTP 5xx error rate has exceeded 1% for the past 5 minutes (current value: {{ $value }}%)."
+
+        - alert: PodRestartLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace="cloud-cost"}[5m]) > 3
+          for: 1m
+          labels:
+            severity: warning
+            team: finops-devops
+          annotations:
+            summary: "Pod {{ $labels.pod }} restarting rapidly"
+            description: "Pod {{ $labels.pod }} in namespace cloud-cost has restarted more than 3 times in the last 5 minutes."
+
+        - alert: ContainerMemorySaturation
+          expr: (container_memory_working_set_bytes{namespace="cloud-cost"} / container_spec_memory_limit_bytes{namespace="cloud-cost"}) * 100 > 90
+          for: 3m
+          labels:
+            severity: warning
+            team: finops-devops
+          annotations:
+            summary: "Container {{ $labels.container }} high memory usage"
+            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} is exceeding 90% of its memory limit."
+
+        - alert: BackendServiceUnhealthy
+          expr: probe_success{instance=~".*cloud-cost-backend.*"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: finops-devops
+          annotations:
+            summary: "Backend readiness probe failing"
+            description: "Cloud Cost Backend readiness probe is failing, indicating possible DB disconnection or service failure."

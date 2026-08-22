@@ -6,6 +6,9 @@ metadata:
   labels:
     app.kubernetes.io/name: cloud-cost-frontend
     app.kubernetes.io/part-of: cloud-cost-system
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
 spec:
   replicas: 2
   strategy:
@@ -20,19 +23,22 @@ spec:
     metadata:
       labels:
         app: cloud-cost-frontend
+        app.kubernetes.io/name: cloud-cost-frontend
+        app.kubernetes.io/version: "2.0.0"
+        environment: "production"
     spec:
       securityContext:
         fsGroup: 101
       containers:
         - name: frontend
-          image: cloud-cost-frontend:latest
+          image: ghcr.io/cloud-cost/cloud-cost-frontend:2.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
               name: http
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL

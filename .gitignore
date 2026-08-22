@@ -29,6 +29,7 @@ bin/
 
 # Databases
 backend/*.sqlite3
+backend/data/*.sqlite3
 *.db
 
 # Terraform state

@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { History as HistoryIcon, Loader2, AlertCircle, Calendar, ExternalLink, RefreshCw } from 'lucide-react';
-import { insforge } from '../insforge';
+import { History as HistoryIcon, RefreshCw, ExternalLink, Search } from 'lucide-react';
+import { apiFetch } from '../lib/api';
+import { formatDateTime, parseSavingsString, formatCurrency } from '../lib/format';
+import { StatusBadge } from '../components/ui/Badge';
+import { Card, CardHeader } from '../components/ui/Card';
+import { ErrorState } from '../components/ui/ErrorState';
+import { EmptyState } from '../components/ui/EmptyState';
+import { SkeletonRow } from '../components/ui/Skeleton';
 
 interface HistoryItem {
   id: string;
@@ -15,48 +21,29 @@ interface HistoryItem {
 }
 
 export default function History() {
+  const navigate = useNavigate();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
 
   const fetchHistory = async () => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      setError('');
-      
-      const token = (insforge as any).tokenManager.getAccessToken();
-      
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      };
-
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
-      const response = await fetch(`${backendUrl}/api/history`, { headers });
-
-      if (!response.ok) {
-        throw new Error('Failed to retrieve history logs');
-      }
-
-      const data = await response.json();
+      const data = await apiFetch<HistoryItem[]>('/api/history');
       setHistory(data || []);
     } catch (err: any) {
-      console.error('Error fetching history:', err);
-      setError(err.message || 'Failed to load cost history.');
+      setError(err.message || 'Failed to load audit history.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
+  useEffect(() => { fetchHistory(); }, []);
 
   const handleViewReport = (item: HistoryItem) => {
     if (item.status !== 'completed') return;
-    
-    // Structure matches scanResult format
     navigate('/report', {
       state: {
         scanResult: {
@@ -69,144 +56,107 @@ export default function History() {
     });
   };
 
-  const formatDate = (isoString: string) => {
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch (e) {
-      return isoString;
-    }
-  };
+  const filtered = history.filter(h =>
+    !search || h.region.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div className="min-h-[calc(100vh-73px)] bg-darkBg text-slate-100 p-8 relative overflow-hidden select-none">
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brandIndigo/5 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-brandPurple/5 rounded-full blur-3xl" />
-
-      <div className="max-w-4xl mx-auto relative z-10">
-        {/* Title */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-brandIndigo/10 border border-brandIndigo/25 rounded-2xl flex items-center justify-center shadow-lg shadow-brandIndigo/5">
-              <HistoryIcon className="w-6 h-6 text-brandIndigo" />
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <Card>
+        <CardHeader
+          title="Audit History"
+          description="Past AWS cost optimization scans"
+          icon={<HistoryIcon className="w-4 h-4" />}
+          action={
+            <div className="flex items-center gap-2">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-zinc-600" />
+                <input
+                  type="text"
+                  placeholder="Filter by region…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-8 pr-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors w-44"
+                />
+              </div>
+              <button
+                onClick={fetchHistory}
+                disabled={loading}
+                className="p-2 rounded-lg border border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white">Cost Audit History</h1>
-              <p className="text-zinc-400 text-sm mt-0.5">Review and compare past cloud optimization reports</p>
-            </div>
-          </div>
+          }
+        />
 
-          <button
-            onClick={fetchHistory}
-            disabled={loading}
-            className="p-2.5 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl transition-all disabled:opacity-50"
-            title="Refresh History"
-          >
-            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-8 p-4 bg-red-950/30 border border-red-900/40 rounded-2xl flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
-            <span className="text-red-300 text-sm font-medium">{error}</span>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="h-64 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-8 h-8 text-brandIndigo animate-spin" />
-            <span className="text-zinc-500 text-sm font-medium">Querying database logs...</span>
-          </div>
-        ) : history.length === 0 ? (
-          <div className="p-12 text-center bg-zinc-900/20 border border-dashed border-zinc-800 rounded-3xl text-zinc-500">
-            <HistoryIcon className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
-            <h4 className="text-white font-semibold">No Audit Records Found</h4>
-            <p className="text-xs text-zinc-500 mt-1">Start a scan on the dashboard to populate logs.</p>
-          </div>
+        {error ? (
+          <ErrorState
+            message={error}
+            onRetry={fetchHistory}
+            className="py-12"
+          />
         ) : (
-          <div className="space-y-4">
-            {history.map((item) => {
-              const isCompleted = item.status === 'completed';
-              const isRunning = item.status === 'running';
-              const isFailed = item.status === 'failed';
-
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => handleViewReport(item)}
-                  className={`bg-darkCard/40 border border-zinc-800/80 rounded-2xl p-6 flex flex-wrap md:flex-nowrap items-center justify-between gap-6 transition-all ${
-                    isCompleted
-                      ? 'hover:border-zinc-700 hover:bg-darkCard/60 cursor-pointer'
-                      : 'opacity-70 pointer-events-none'
-                  }`}
-                >
-                  <div className="space-y-3 shrink-0">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-white uppercase font-mono">
-                        {item.region}
-                      </span>
-                      
-                      {/* Status badge */}
-                      {isCompleted && (
-                        <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
-                          Completed
-                        </span>
-                      )}
-                      {isRunning && (
-                        <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-orange-500/10 text-orange-400 border border-orange-500/20 uppercase">
-                          Running
-                        </span>
-                      )}
-                      {isFailed && (
-                        <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-red-500/10 text-red-400 border border-red-500/20 uppercase">
-                          Failed
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 text-zinc-500 text-xs font-medium">
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>{formatDate(item.created_at)}</span>
-                    </div>
-                  </div>
-
-                  {/* Summary Metrics */}
-                  <div className="flex items-center gap-6 md:gap-12 flex-wrap">
-                    <div className="text-center md:text-left">
-                      <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">Scanned</div>
-                      <div className="text-base font-bold text-zinc-300 mt-0.5">{item.resources_scanned} resources</div>
-                    </div>
-
-                    <div className="text-center md:text-left">
-                      <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">Warnings</div>
-                      <div className="text-base font-bold text-orange-400 mt-0.5">{item.issues_found} issues</div>
-                    </div>
-
-                    <div className="text-center md:text-left">
-                      <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">Savings</div>
-                      <div className="text-base font-bold text-emerald-400 mt-0.5">{item.estimated_savings}</div>
-                    </div>
-                  </div>
-
-                  {/* External view indicator */}
-                  {isCompleted && (
-                    <div className="p-2 border border-zinc-800 bg-zinc-900/60 text-zinc-400 rounded-xl group-hover:text-zinc-200 group-hover:border-zinc-700 shrink-0">
-                      <ExternalLink className="w-4 h-4" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-zinc-800 bg-zinc-900/40">
+                <tr>
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">Region</th>
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">Date</th>
+                  <th className="px-5 py-3 text-right text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">Scanned</th>
+                  <th className="px-5 py-3 text-right text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">Issues</th>
+                  <th className="px-5 py-3 text-right text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">Savings</th>
+                  <th className="px-5 py-3 text-center text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">Status</th>
+                  <th className="px-5 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/60">
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={7} />)
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>
+                      <EmptyState
+                        icon={<HistoryIcon className="w-6 h-6" />}
+                        title={search ? 'No results match your filter' : 'No audit records yet'}
+                        description={search ? 'Try a different region name.' : 'Run a scan from the Dashboard to start tracking history.'}
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map(item => {
+                    const savings = parseSavingsString(item.estimated_savings);
+                    return (
+                      <tr
+                        key={item.id}
+                        onClick={() => handleViewReport(item)}
+                        className={`text-zinc-300 hover:bg-zinc-900/40 transition-colors ${
+                          item.status === 'completed' ? 'cursor-pointer' : 'opacity-60'
+                        }`}
+                      >
+                        <td className="px-5 py-3.5 font-mono text-xs font-semibold text-white uppercase">{item.region}</td>
+                        <td className="px-5 py-3.5 text-xs text-zinc-500 whitespace-nowrap">{formatDateTime(item.created_at)}</td>
+                        <td className="px-5 py-3.5 text-xs text-right tabular-nums">{item.resources_scanned.toLocaleString()}</td>
+                        <td className="px-5 py-3.5 text-xs text-right tabular-nums text-amber-400 font-semibold">{item.issues_found}</td>
+                        <td className="px-5 py-3.5 text-xs text-right tabular-nums text-emerald-400 font-semibold">
+                          {savings > 0 ? formatCurrency(savings) : '—'}
+                        </td>
+                        <td className="px-5 py-3.5 text-center">
+                          <StatusBadge status={item.status} />
+                        </td>
+                        <td className="px-5 py-3.5 text-zinc-600">
+                          {item.status === 'completed' && <ExternalLink className="w-3.5 h-3.5" />}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

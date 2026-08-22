@@ -1,0 +1,65 @@
+﻿apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cloud-cost-postgres-backup
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-postgres-backup
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
+spec:
+  schedule: "0 2 * * *"  # Runs daily at 02:00 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: cloud-cost-postgres-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: postgres-backup
+              image: postgres:15-alpine
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: cloud-cost-secret
+                      key: POSTGRES_PASSWORD
+                - name: POSTGRES_USER
+                  value: "clouduser"
+                - name: POSTGRES_DB
+                  value: "cloudcost"
+                - name: POSTGRES_HOST
+                  value: "postgres"
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_FILE="/backups/cloudcost_${BACKUP_DATE}.sql.gz"
+                  echo "Starting PostgreSQL backup: ${BACKUP_FILE}..."
+                  pg_dump -h ${POSTGRES_HOST} -U ${POSTGRES_USER} -d ${POSTGRES_DB} | gzip > ${BACKUP_FILE}
+                  echo "Backup complete! File size: $(ls -lh ${BACKUP_FILE} | awk '{print $5}')"
+                  # Retention: delete backups older than 14 days
+                  find /backups -name "cloudcost_*.sql.gz" -mtime +14 -delete
+                  echo "Retention cleanup finished."
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backups
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: cloud-cost-postgres-pvc

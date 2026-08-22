@@ -1,10 +1,27 @@
 import { createClient } from "@insforge/sdk";
 
-// Read environment variables loaded by Vite (prefixed with VITE_)
-const baseUrl = import.meta.env.VITE_INSFORGE_PROJECT_URL || "https://scf29qqy.us-east.insforge.app";
-const anonKey = import.meta.env.VITE_INSFORGE_ANON_KEY || "ik_fc877384331b6eaae45d762900f67d0c"; // gitleaks:allow
+/**
+ * InsForge (Supabase-compatible) client configuration.
+ *
+ * SECURITY: No credential fallbacks are used here.
+ * Hardcoded credentials leak into the compiled JS bundle and are visible
+ * to any user who inspects network responses or the dist/ directory.
+ *
+ * Required environment variables (defined in frontend/.env, never committed):
+ *   VITE_INSFORGE_PROJECT_URL — The InsForge project base URL
+ *   VITE_INSFORGE_ANON_KEY    — The InsForge anonymous/public API key
+ *
+ * See frontend/.env.example for the expected format.
+ */
+const baseUrl = import.meta.env.VITE_INSFORGE_PROJECT_URL as string | undefined;
+const anonKey = import.meta.env.VITE_INSFORGE_ANON_KEY as string | undefined;
 
-export const insforge = createClient({
-  baseUrl,
-  anonKey,
-});
+if (!baseUrl || !anonKey) {
+  throw new Error(
+    "[Cloud Cost Detective] Missing required environment variables.\n" +
+    "  VITE_INSFORGE_PROJECT_URL and VITE_INSFORGE_ANON_KEY must be set in frontend/.env\n" +
+    "  See frontend/.env.example for the expected format."
+  );
+}
+
+export const insforge = createClient({ baseUrl, anonKey });

@@ -63,9 +63,9 @@ export default function FinOpsChat() {
       };
     }
 
-    // 2. Fallback to localStorage (Dashboard or when navigated without state)
+    // 2. Fallback to sessionStorage (scoped to current browser session only)
     try {
-      const saved = localStorage.getItem('latestScanResult');
+      const saved = sessionStorage.getItem('latestScanResult');
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
@@ -74,7 +74,7 @@ export default function FinOpsChat() {
         };
       }
     } catch (e) {
-      console.error('Failed to parse latestScanResult from localStorage:', e);
+      console.error('Failed to parse latestScanResult from sessionStorage:', e);
     }
 
     return { resources: [], recommendations: [] };

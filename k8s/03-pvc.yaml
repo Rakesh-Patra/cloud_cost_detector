@@ -5,6 +5,9 @@ metadata:
   namespace: cloud-cost
   labels:
     app.kubernetes.io/name: cloud-cost-detective
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
 spec:
   accessModes:
     - ReadWriteOnce
@@ -19,6 +22,26 @@ metadata:
   namespace: cloud-cost
   labels:
     app.kubernetes.io/name: cloud-cost-detective
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cloud-cost-backend-pvc
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-backend
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
 spec:
   accessModes:
     - ReadWriteOnce

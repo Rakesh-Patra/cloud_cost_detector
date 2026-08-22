@@ -8,9 +8,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket = "cloud-cost-detector-tfstate-rakesh-patra"
-    key    = "stag/terraform.tfstate"
-    region = "us-east-1"
+    bucket         = "cloud-cost-detector-tfstate-rakesh-patra"
+    key            = "stag/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "cloud-cost-detector-tflocks"
+    encrypt        = true
   }
 }
 

@@ -23,9 +23,9 @@ def init_in_memory_db():
 
 @pytest.fixture
 def client():
-    # Override authentication dependency
+    # Override authentication dependency with authorized test admin user
     app.dependency_overrides[get_current_user] = lambda: {
-        "user": {"id": "test-user-id", "email": "test@example.com"},
+        "user": {"id": "test-user-id", "email": "admin@example.com", "role": "admin"},
         "token": "mock-jwt-token"
     }
     with TestClient(app) as c:

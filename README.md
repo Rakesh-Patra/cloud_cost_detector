@@ -1,8 +1,8 @@
-# 🔍 AI Cloud Cost Detective — Enterprise FinOps & Cost Optimization Platform
+# 🔍 AI Cloud Cost Detective — Enterprise Multi-Tenant FinOps Platform
 
-Welcome to the **AI Cloud Cost Detective** repository! This platform helps engineering, finance, and DevOps teams track, analyze, and optimize cloud expenses. By combining automated AWS infrastructure scans with **Gemini AI**, it identifies orphaned assets, recommends cost-saving measures (such as upgrading storage types from `gp2` to `gp3`), alerts teams to budget spikes, and enables automatic remediation.
+Welcome to the **AI Cloud Cost Detective** repository! This platform helps engineering, finance, and DevOps teams track, analyze, and optimize cloud expenses across multi-account AWS environments. By combining automated AWS infrastructure scans, **14-day CloudWatch telemetry**, precision regional pricing models, and **Gemini AI**, it identifies orphaned assets, recommends cost-saving modernizations (such as upgrading `gp2` to `gp3` storage for 20% savings), enforces automated safety guardrails, and generates copy-paste **Terraform IaC** fixes.
 
-The repository is built as a containerized multi-tier web application (FastAPI backend + Vite/React frontend) backed by a local SQLite database for configurations and an InsForge managed cloud database for audit tracking. It is fully guarded by a **DevSecOps shift-left security pipeline** to prevent any credential leaks.
+The platform is designed with an **Enterprise-First Security Model**: zero permanent credentials stored, 1-Click AWS CloudFormation onboarding via `sts:AssumeRole`, **Snapshot-before-Delete** safeguards, and a **7-Day "Tag-and-Wait" Quarantine lifecycle**.
 
 ---
 
@@ -18,119 +18,80 @@ The repository is built as a containerized multi-tier web application (FastAPI b
                                         │
                                         ▼
                           ┌──────────────────────────┐
-                          │      FastAPI Backend     │◄─────────┐
-                          │         (Python)         │          │
-                          └──────────┬───┬───────────┘          │
-                                     │   │                      │
-                  boto3 AWS API Scans │   │ Gemini API           │
-                                     │   │ (AI Analysis)        │
-                                     ▼   ▼                      ▼
-                            ┌──────────────┐          ┌───────────────────┐
-                            │  AWS Cloud   │          │  InsForge Cloud   │
-                            │ Infrastructure│         │  Audit Database   │
-                            └──────────────┘          └───────────────────┘
-                                                                ▲
-                                                                │
-                                    Local Sync (Anomaly Logs)   │
-                                                                │
-                                                      ┌─────────┴─────────┐
-                                                      │ SQLite Local DB   │
-                                                      │   (db.sqlite3)    │
-                                                      └───────────────────┘
+                          │     FastAPI Backend      │◄─────────┐
+                          │        (Python)          │          │
+                          └─────┬───────┬───────┬────┘          │
+                                │       │       │               │
+            Dynamic STS Session │       │       │ Gemini API    │
+            (`sts:AssumeRole`)  │       │       │ (Synthesis)   │
+                                ▼       │       ▼               ▼
+         ┌──────────────────────────┐   │    ┌───────┐ ┌───────────────────┐
+         │ Customer AWS Account(s)  │   │    │Gemini │ │  InsForge Cloud   │
+         │ - 14-Day CloudWatch CW   │   │    │  AI   │ │  Audit Database   │
+         │ - EC2, EBS, RDS Scanner  │   │    └───────┘ └───────────────────┘
+         │ - Snapshot / Quarantine  │   │                       ▲
+         └──────────────────────────┘   │                       │
+                                        ▼                       │
+                           ┌─────────────────────────┐          │
+                           │  Pricing & Rules Engine │          │
+                           │  (Deterministic Tier 1) │          │
+                           └────────────┬────────────┘          │
+                                        │                       │
+                                        │ Local Sync / State    │
+                                        ▼                       │
+                           ┌─────────────────────────┐          │
+                           │ SQLite / Postgres DB    ├──────────┘
+                           │ (Orgs, Accounts, Quar)  │
+                           └─────────────────────────┘
 ```
 
 ---
 
 ## 🚀 Key Platform Features
 
-Here is what the application provides:
+### 1. Zero-Key Multi-Tenant AWS Onboarding (`sts:AssumeRole`)
+- **1-Click CloudFormation Launcher:** Deploy a read-only `SecurityAudit` IAM Role directly into your AWS account with a unique, cryptographically generated `ExternalId` in under 60 seconds.
+- **Zero Permanent Credentials:** No root AWS Access Keys or Secrets are ever saved in the platform database. Temporary STS session tokens are created dynamically per scan.
+- **Multi-Account Selector:** Switch and scan across different AWS environments (Production, Staging, Dev) seamlessly.
 
-### 1. Secure Authentication & Verification Flow
+### 2. 14-Day CloudWatch Telemetry & Precision Pricing Engine
+- **False-Positive Elimination:** Ingests 14 days of hourly P95/P99 CPU utilization and Network I/O metrics to differentiate between true idle compute ($< 2\%$ CPU) and periodic batch workloads.
+- **Precision Pricing Model:** Computes exact regional On-Demand rates, `gp2` $\rightarrow$ `gp3` modernization deltas (\$0.10 vs \$0.08/GB-mo), and idle Elastic IP fees.
+- **Two-Tier Processing:** Fast Python deterministic filtering scores 100% of resources in milliseconds, sending only anomalies to Gemini AI—slashing token consumption by 95%.
 
-User sessions are safely handled via secure InsForge authentication steps:
+### 3. Enterprise Safety Guardrails & Quarantine Dashboard
+- **Snapshot-Before-Delete:** Every volume termination automatically creates an encrypted, tagged backup snapshot (`CreatedBy: CloudCostDetective`) with an auto-expiry policy before deletion.
+- **7-Day "Tag-and-Wait" Quarantine:** Resources flagged for deletion receive AWS tags (`FinOps_Status=Quarantined`) with a 7-day grace period.
+- **Quarantine Hub (`/quarantine`):** View quarantined assets, monitor remaining days, and 1-click **"Keep & Whitelist"** or **"Safe Delete Now"**.
 
-- **Registration:** Complete a signup with email and password configs.
-- **Email Verification:** Simple verification processes prevent fake accounts.
-- **Login Portal:** Secure authentication to retrieve session access tokens.
+### 4. Detailed Cost Analysis & Terraform IaC Generation
+- **Optimization Cards:** Displays potential savings per resource with severity badges and accurate dollar amounts.
+- **Terraform HCL Fixes:** Provides copy-pasteable Terraform configuration code to remediate findings via Infrastructure-as-Code without creating state drift.
+- **Automated CLI Remediation:** 1-click execution to upgrade storage or stop idle compute directly from the UI.
 
-<p align="center">
-  <img src="assets/login.png" alt="Login Page" width="30%" />
-  <img src="assets/signup.png" alt="Signup Page" width="30%" />
-  <img src="assets/email_verification.png" alt="Email Verification" width="30%" />
-</p>
-<p align="center"><em>Figures 1, 2, & 3: Login, Registration, and Email Verification interfaces</em></p>
-
-### 2. Cost Detective Dashboard & WebSocket Scanner
-
-- **AWS Target Region Selector:** Initiate real-time scans on active cost-driving AWS resources in any specific region (e.g., `us-east-1`).
-- **Interactive Progress Tracker:** Monitor the scan milestones dynamically streamed over WebSockets:
-  1. `Initializing AWS clients...`
-  2. `Scanning EC2, EBS, and RDS resources...`
-  3. `Generating structured cost analysis via Gemini AI...`
-  4. `Persisting audit metrics to InsForge Cloud...`
-  5. `Analysis complete`
-
-![Cost Detective Dashboard](assets/dashboard.png)
-*Figure 4: Cost Detective Dashboard with region scan interface*
-
-![WebSocket Scanner in Progress](assets/scan_progress.png)
-*Figure 5: Scanner displaying WebSocket-driven active progress steps*
-
-### 3. Detailed Cost Analysis & Optimization Reports
-
-Once analysis completes, the app displays dynamic, interactive cards for cost-saving suggestions:
-
-- **Optimization Recommendation Cards:** View recommendations generated by Gemini AI detailing unattached assets, orphaned storage, or outdated configurations.
-- **Automated Remediation:** Trigger script executions to safely upgrade gp2 storage to gp3, delete stale volumes, or release unassigned resources.
-
-![AI Cost Analysis Recommendations Report](assets/analysis_report.png)
-*Figure 6: Generated cloud optimization and remediation reports page*
-
-### 4. Cost Audit History
-
-- **Historical Comparison:** Review and compare past cloud optimization reports.
-- **Insight Cards:** Inspect the date of scan, target region, total scanned resource counts, active warning flags, and estimated savings.
-
-![Cost Audit History Log](assets/cost_audit_history.png)
-*Figure 7: Audited history log showing historical comparison and savings details*
-
-### 5. FinOps AI Chat Assistant
-
-- **Context-Aware Conversational AI:** Talk with the FinOps assistant drawer anchored to the screen to inspect resources.
-- **Quick Action Suggested Prompts:** Ask to write Terraform scripts, detail critical issues, or explain upgrade instructions.
-
-![FinOps AI Chat Assistant Drawer](assets/ai_assistant.png)
-*Figure 8: Conversational FinOps chat assistant drawer*
-
-### 6. Budgets & Spend Anomaly Alerts
-
+### 5. Budgets & Spend Anomaly Alerts
 - **Guardrails:** Configure monthly caps and list email distribution channels.
 - **Spend Trends:** View 14-day spending charts featuring highlight indicators on anomalous surges.
-- **Breach Notifications:** Automated notifications are dispatched directly to the registered communication channels.
-
-![Budgets Config & 14-Day Spend Trends](assets/budget&alerts.png)
-*Figure 9: Budget settings, threshold configs, and spend trend visualizers*
-
-![Alert Notification Email](assets/alert_report_email.png)
-*Figure 10: Email alert sent to users warning of cost threshold breaches*
+- **Automated Notifications:** Dispatches real-time email alerts upon threshold breaches.
 
 ---
 
 ## 📁 Repository Structure
 
 - [backend/](file:///c:/ai_log/cloud_cost/backend) — FastAPI application code, AWS scanners, Gemini prompt engines, and database clients.
-  - [main.py](file:///c:/ai_log/cloud_cost/backend/main.py) — Main API endpoints, WebSocket connection manager, auth middlewares, and background anomaly scheduler loops.
-  - [aws_scanner.py](file:///c:/ai_log/cloud_cost/backend/aws_scanner.py) — Boto3 scanner fetching EC2, EBS, RDS assets, and executing automated remediations.
-  - [ai_analyzer.py](file:///c:/ai_log/cloud_cost/backend/ai_analyzer.py) — Interacts with Google Gemini AI to analyze raw resources and recommend savings.
-  - [anomaly_detector.py](file:///c:/ai_log/cloud_cost/backend/anomaly_detector.py) — Mathematical models that evaluate cost trends and send notifications.
-  - [database.py](file:///c:/ai_log/cloud_cost/backend/database.py) — Schema definitions and read/write layers for local SQLite backups.
-  - [insforge_client.py](file:///c:/ai_log/cloud_cost/backend/insforge_client.py) — Client to manage session authentications, write audits, and fetch histories.
-- [frontend/](file:///c:/ai_log/cloud_cost/frontend) — Single Page App (SPA) built using Vite, React, TypeScript, and Tailwind CSS.
-  - [src/pages/Dashboard.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Dashboard.tsx) — Main dashboard containing region controls and scan trigger interfaces.
-  - [src/pages/Budgets.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Budgets.tsx) — Setting caps, checking anomaly trend charts, and testing alerts.
-  - [src/pages/History.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/History.tsx) — Past audit reports list and savings summaries.
-  - [src/components/FinOpsChat.tsx](file:///c:/ai_log/cloud_cost/frontend/src/components/FinOpsChat.tsx) — The chatbot interface drawer anchored to the bottom-right.
-  - [src/components/ProgressTracker.tsx](file:///c:/ai_log/cloud_cost/frontend/src/components/ProgressTracker.tsx) — WebSocket progress visualization.
+  - [main.py](file:///c:/ai_log/cloud_cost/backend/main.py) — API endpoints, WebSocket connection manager, multi-tenant cloud account & quarantine routes.
+  - [aws_scanner.py](file:///c:/ai_log/cloud_cost/backend/aws_scanner.py) — Boto3 scanner, dynamic STS AssumeRole session factory, CloudWatch 14-day telemetry ingestion, snapshot-before-delete, and quarantine tagging.
+  - [pricing_engine.py](file:///c:/ai_log/cloud_cost/backend/pricing_engine.py) — Precision AWS pricing catalog and deterministic pre-filter evaluator.
+  - [ai_analyzer.py](file:///c:/ai_log/cloud_cost/backend/ai_analyzer.py) — Two-tier cost engine combining deterministic scoring with Gemini 2.5 Flash for executive summaries and Terraform HCL generation.
+  - [anomaly_detector.py](file:///c:/ai_log/cloud_cost/backend/anomaly_detector.py) — Cost spike detection and notification router.
+  - [database.py](file:///c:/ai_log/cloud_cost/backend/database.py) — Multi-tenant database schemas for organizations, cloud accounts, quarantine items, and budget configs.
+  - [tests/](file:///c:/ai_log/cloud_cost/backend/tests) — Comprehensive test suite (30 automated tests) for STS assume role, telemetry, pricing, and quarantine workflows.
+- [frontend/](file:///c:/ai_log/cloud_cost/frontend) — Single Page App (SPA) built with Vite, React, TypeScript, and Tailwind CSS.
+  - [src/pages/Dashboard.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Dashboard.tsx) — Main dashboard with multi-account switcher and 1-Click AWS Connect launcher.
+  - [src/pages/Quarantine.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Quarantine.tsx) — Quarantine management dashboard with grace period countdown and snapshot rollbacks.
+  - [src/pages/Report.tsx](file:///c:/ai_log/cloud_cost/frontend/src/pages/Report.tsx) — Cost analysis reports with Terraform IaC snippets and 7-day quarantine actions.
+  - [src/components/ConnectCloudModal.tsx](file:///c:/ai_log/cloud_cost/frontend/src/components/ConnectCloudModal.tsx) — 1-Click AWS CloudFormation onboarding modal.
+  - [src/components/FinOpsChat.tsx](file:///c:/ai_log/cloud_cost/frontend/src/components/FinOpsChat.tsx) — Anchored FinOps conversational AI drawer.
 - [docker-compose.yml](file:///c:/ai_log/cloud_cost/docker-compose.yml) — Local multi-container development configuration.
 - [devops_roadmap.md](file:///c:/ai_log/cloud_cost/devops_roadmap.md) — Future implementation roadmap including CI/CD pipelines, Prometheus/Grafana monitors, IaC configs, and Helm plans.
 
@@ -209,7 +170,10 @@ Once the containers start up, open your web browser to access the application:
 |---|---|---|
 | 💻 **Frontend Web UI** | <http://localhost:5173> (or <http://localhost:8080>) | React + Vite UI dashboard |
 | ⚡ **Backend API Docs** | <http://localhost:8000/docs> | Interactive Swagger API documentation |
+| 🛡️ **Quarantine Hub** | <http://localhost:5173/quarantine> | 7-day grace period & snapshot safety hub |
 | 🔐 **HashiCorp Vault UI** | <http://localhost:8200/ui> | Secrets manager (Root Token: `root` or `hvs...`) |
+
+> ⚡ **Connecting New AWS Accounts:** Once in the dashboard, click **"Connect AWS (1-Click)"** to automatically launch a pre-populated CloudFormation stack in your AWS console using STS AssumeRole. Zero root keys required!
 
 To stop the platform at any time, press `Ctrl + C` in your terminal, or run:
 
