@@ -101,6 +101,7 @@ runs:
       with:
         aws-region: ${{ inputs.aws-region }}
         security-group-id: ${{ steps.sg.outputs.security_group_id }}
+        ports: '8200'
         action: 'authorize'
 
     - name: Fetch Secrets from Vault
@@ -120,4 +121,5 @@ runs:
         aws-region: ${{ inputs.aws-region }}
         security-group-id: ${{ steps.sg.outputs.security_group_id }}
         ip-address: ${{ steps.whitelist.outputs.runner-ip }}
+        ports: '8200'
         action: 'revoke'

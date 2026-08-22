@@ -15,6 +15,10 @@ inputs:
     description: 'Specific IP address to authorize/revoke. If blank during authorize, fetches runner IP.'
     required: false
     default: ''
+  ports:
+    description: 'Space-separated list of TCP ports to authorize or revoke (e.g. "8200 22" or "8200")'
+    required: false
+    default: '8200 22'
 outputs:
   runner-ip:
     description: 'The IP address that was authorized/revoked'
@@ -49,7 +53,7 @@ runs:
         echo "Runner IP to process: $IP"
         echo "runner_ip=$IP" >> $GITHUB_OUTPUT
 
-        PORTS=(8200 22)
+        read -ra PORTS <<< "${{ inputs.ports }}"
 
         for PORT in "${PORTS[@]}"; do
           if [ "$ACTION" = "authorize" ]; then
