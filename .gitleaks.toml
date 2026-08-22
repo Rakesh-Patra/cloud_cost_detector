@@ -1,4 +1,4 @@
-﻿# .gitleaks.toml - Gitleaks secret scanner configuration
+# .gitleaks.toml - Gitleaks secret scanner configuration
 # Docs: https://github.com/gitleaks/gitleaks#configuration
 
 title = "Cloud Cost Detective - Gitleaks Config"
