@@ -61,13 +61,26 @@ def main():
     env_data = load_env_file(ENV_FILE)
     print(f"Loaded {len(env_data)} variables from {os.path.basename(ENV_FILE)}.")
     
-    # 1. App Secrets
+    # Fallback to ~/.aws/credentials if not in env
+    aws_id = env_data.get("AWS_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")
+    aws_secret = env_data.get("AWS_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    if not aws_id or not aws_secret:
+        try:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(os.path.expanduser("~/.aws/credentials"))
+            if "default" in config:
+                aws_id = aws_id or config["default"].get("aws_access_key_id", "")
+                aws_secret = aws_secret or config["default"].get("aws_secret_access_key", "")
+        except Exception:
+            pass
+
     app_secrets = {
         "gemini_api_key": env_data.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", ""),
         "insforge_project_url": env_data.get("INSFORGE_PROJECT_URL") or os.getenv("INSFORGE_PROJECT_URL", ""),
         "insforge_anon_key": env_data.get("INSFORGE_ANON_KEY") or os.getenv("INSFORGE_ANON_KEY", ""),
-        "aws_access_key_id": env_data.get("AWS_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", ""),
-        "aws_secret_access_key": env_data.get("AWS_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", ""),
+        "aws_access_key_id": aws_id,
+        "aws_secret_access_key": aws_secret,
         "aws_default_region": env_data.get("AWS_DEFAULT_REGION") or os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
     }
     app_secrets = {k: v for k, v in app_secrets.items() if v and "placeholder" not in v and not v.endswith("_here")}
