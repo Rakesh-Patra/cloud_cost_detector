@@ -69,7 +69,7 @@ runs:
         SSH_KEY: ${{ inputs.ssh-private-key }}
       run: |
         mkdir -p /tmp/.ansible_ssh
-        printf "%s\n" "$SSH_KEY" > /tmp/.ansible_ssh/deploy_key.pem
+        printf "%s\n" "$SSH_KEY" | tr -d '\r' > /tmp/.ansible_ssh/deploy_key.pem
         chmod 600 /tmp/.ansible_ssh/deploy_key.pem
 
     - name: Run Ansible Playbook
