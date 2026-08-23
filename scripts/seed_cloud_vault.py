@@ -39,12 +39,15 @@ def load_env_file(path):
 
 def write_vault_kv(path, data):
     url = f"{VAULT_ADDR}/v1/secret/data/{path}"
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise ValueError("Invalid URL scheme: only http and https are allowed")
     payload = json.dumps({"data": data}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, method="POST")
     req.add_header("X-Vault-Token", VAULT_TOKEN)
     req.add_header("X-Vault-Namespace", VAULT_NAMESPACE)
     req.add_header("Content-Type", "application/json")
     try:
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urllib.request.urlopen(req) as resp:
             return True, "Success"
     except urllib.error.HTTPError as e:

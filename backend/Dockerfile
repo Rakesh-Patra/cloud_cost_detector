@@ -4,13 +4,13 @@ FROM python:3.11-slim AS builder
 WORKDIR /app
 
 COPY requirements.txt .
-# Install packages into a prefix directory
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-RUN mkdir -p /app/data
+# Install packages into a prefix directory and prepare data dir
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt && \
+    mkdir -p /app/data
 
 
 # ─── Stage 2: Final (Distroless) ────────────────────────────────────────────
-FROM gcr.io/distroless/python3-debian12
+FROM gcr.io/distroless/python3-debian12:nonroot
 
 # Use explicit nonroot user ID (65532) for K8s security context parity
 USER 65532:65532
