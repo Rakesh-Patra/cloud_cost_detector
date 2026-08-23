@@ -24,4 +24,5 @@ module "ec2" {
   allowed_vault_cidr_blocks    = var.allowed_vault_cidr_blocks
   allowed_backend_cidr_blocks  = var.allowed_backend_cidr_blocks
   allowed_frontend_cidr_blocks = var.allowed_frontend_cidr_blocks
+  create_iam_role              = var.create_iam_role
 }

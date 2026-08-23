@@ -67,11 +67,6 @@ resource "aws_security_group" "ec2" {
   }
 }
 
-resource "aws_key_pair" "app" {
-  key_name   = "${var.key_name}-${var.environment}-v2"
-  public_key = file("${path.module}/../../terrakey.pub")
-}
-
 resource "aws_iam_role" "app" {
   count       = var.create_iam_role ? 1 : 0
   name_prefix = "${var.project_name}-${var.environment}-role-"
@@ -106,7 +101,7 @@ resource "aws_instance" "app" {
   # checkov:skip=CKV_AWS_135:EBS optimized is not required for dev/staging workloads
   ami                    = var.ami
   instance_type          = var.instance_type
-  key_name               = aws_key_pair.app.key_name
+  key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.ec2.id]
   iam_instance_profile   = var.create_iam_role ? aws_iam_instance_profile.app[0].name : null
 

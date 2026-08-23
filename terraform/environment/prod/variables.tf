@@ -42,3 +42,9 @@ variable "allowed_frontend_cidr_blocks" {
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }
+
+variable "create_iam_role" {
+  description = "Whether to create IAM role for EC2 instance profile"
+  type        = bool
+  default     = false
+}
