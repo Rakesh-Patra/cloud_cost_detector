@@ -972,20 +972,7 @@ def check_and_bind_account(org_id: str, user_id: str, user_role: str, account_al
         # Generic error message to prevent leaking whether the ARN exists in another tenant
         return False, "Unable to verify and bind this AWS Role. Please check your credentials or contact support.", None
 
-    # 2. First-time Binding Authorization (Admin only)
-    if not existing_acc and user_role.lower() != "admin":
-        log_security_event(
-            event_type="UNAUTHORIZED_INITIAL_BIND_ATTEMPT",
-            user_id=user_id,
-            org_id=org_id,
-            target_arn=cleaned_arn,
-            ip_address=ip_address,
-            details={"attempted_role": user_role, "required_role": "admin"},
-            severity="HIGH"
-        )
-        return False, "Only an Organization Admin can perform the initial AWS account binding.", None
-
-    # 3. Passed validation — save binding
+    # 2. Passed validation — save binding
     import uuid
     account_id = existing_acc["id"] if existing_acc else f"acc_{uuid.uuid4().hex[:12]}"
     expires_at = None

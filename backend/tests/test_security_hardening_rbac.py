@@ -135,27 +135,14 @@ def test_finops_token_gets_403_on_quarantine_endpoints():
 # =====================================================================
 
 def test_org_binding_flow():
-    """Test full org-binding flow: initial admin bind, cross-org takeover rejection, non-admin rejection."""
+    """Test full org-binding flow: initial bind and cross-org takeover rejection."""
     role_arn_target = "arn:aws:iam::999888777666:role/TargetCloudRole"
     
-    # (c) Non-admin in Org A attempting initial binding -> REJECTED
+    # (a) Org member binding for the first time -> SUCCESS
     passed, msg, acc = database.check_and_bind_account(
         org_id="org_alpha",
         user_id="user_devops_alpha",
         user_role="devops",
-        account_alias="Alpha-Dev",
-        aws_account_id="999888777666",
-        role_arn=role_arn_target,
-        external_id="ext_alpha_123"
-    )
-    assert passed is False
-    assert "Only an Organization Admin" in msg
-
-    # (a) Org Admin in Org A binding for the first time -> SUCCESS
-    passed, msg, acc = database.check_and_bind_account(
-        org_id="org_alpha",
-        user_id="user_admin_alpha",
-        user_role="admin",
         account_alias="Alpha-Prod",
         aws_account_id="999888777666",
         role_arn=role_arn_target,

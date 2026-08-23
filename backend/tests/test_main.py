@@ -269,12 +269,12 @@ def test_rbac_devops_can_remediate():
             assert response.status_code == status.HTTP_200_OK
             assert response.json()["success"] is True
             
-            # DevOps cannot connect cloud account (Admin only)
+            # DevOps can also connect cloud account
             conn_resp = test_client.post("/api/v1/accounts/connect", json={
                 "account_alias": "Test", "aws_account_id": "123456789012",
                 "role_arn": "arn:aws:iam::123456789012:role/test", "external_id": "ext_123"
             })
-            assert conn_resp.status_code == status.HTTP_403_FORBIDDEN
+            assert conn_resp.status_code == status.HTTP_201_CREATED
             
     app.dependency_overrides.clear()
 
