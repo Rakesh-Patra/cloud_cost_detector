@@ -26,6 +26,7 @@ from aws_scanner import (
     execute_remediation,
     get_assumed_role_session,
     generate_cloudformation_template,
+    generate_session_policy,
     safe_delete_ebs_volume,
     quarantine_resource,
     restore_quarantined_resource,

@@ -972,7 +972,20 @@ def check_and_bind_account(org_id: str, user_id: str, user_role: str, account_al
         # Generic error message to prevent leaking whether the ARN exists in another tenant
         return False, "Unable to verify and bind this AWS Role. Please check your credentials or contact support.", None
 
-    # 2. Passed validation — save binding
+    # 2. First-time Binding Authorization (Admin only)
+    if not existing_acc and user_role.lower() != "admin":
+        log_security_event(
+            event_type="UNAUTHORIZED_INITIAL_BIND_ATTEMPT",
+            user_id=user_id,
+            org_id=org_id,
+            target_arn=cleaned_arn,
+            ip_address=ip_address,
+            details={"attempted_role": user_role, "required_role": "admin"},
+            severity="HIGH"
+        )
+        return False, "Only an Organization Admin can perform the initial AWS account binding.", None
+
+    # 3. Passed validation — save binding
     import uuid
     account_id = existing_acc["id"] if existing_acc else f"acc_{uuid.uuid4().hex[:12]}"
     expires_at = None
@@ -1029,26 +1042,19 @@ def get_or_create_user_profile(user_id: str, email: str, org_id: str = None, def
             }
 
         effective_org = org_id or user_id or "default_org"
-        
-        # If no admin exists yet in this organization, the tenant creator is initialized as admin
-        cursor.execute(
-            f"SELECT COUNT(*) FROM user_profiles WHERE org_id = {param_placeholder} AND role = 'admin'",
-            (effective_org,)
-        )
-        admin_count = cursor.fetchone()[0]
-        assigned_role = "admin" if admin_count == 0 else default_role
+        assigned_role = default_role
 
         if db_type == "postgres":
             query = """
             INSERT INTO user_profiles (user_id, email, org_id, role, status, domain_verified, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, 1, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role
+            VALUES (%s, %s, %s, %s, %s, 0, %s, %s)
+            ON CONFLICT (user_id) DO NOTHING
             """
         else:
             query = """
             INSERT INTO user_profiles (user_id, email, org_id, role, status, domain_verified, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-            ON CONFLICT (user_id) DO UPDATE SET role = excluded.role
+            VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+            ON CONFLICT (user_id) DO NOTHING
             """
         cursor.execute(query, (user_id, email, effective_org, assigned_role, "active", now_str, now_str))
         conn.commit()
@@ -1231,9 +1237,33 @@ def verify_org_domain(org_id: str, domain: str, verification_token: str, admin_u
             (domain.lower(), org_id)
         )
         cursor.execute(
-            f"UPDATE user_profiles SET domain_verified = 1, role = 'admin' WHERE user_id = {param_placeholder} AND org_id = {param_placeholder}",
-            (admin_user_id, org_id)
+            f"SELECT user_id FROM user_profiles WHERE user_id = {param_placeholder}",
+            (admin_user_id,)
         )
+        existing_u = cursor.fetchone()
+        now_str = datetime.now(timezone.utc).isoformat()
+        if existing_u:
+            cursor.execute(
+                f"UPDATE user_profiles SET domain_verified = 1, role = 'admin', updated_at = {param_placeholder} WHERE user_id = {param_placeholder}",
+                (now_str, admin_user_id)
+            )
+        else:
+            if db_type == "postgres":
+                cursor.execute(
+                    """
+                    INSERT INTO user_profiles (user_id, email, org_id, role, status, domain_verified, created_at, updated_at)
+                    VALUES (%s, %s, %s, 'admin', 'active', 1, %s, %s)
+                    """,
+                    (admin_user_id, f"{admin_user_id}@{domain}", org_id, now_str, now_str)
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO user_profiles (user_id, email, org_id, role, status, domain_verified, created_at, updated_at)
+                    VALUES (?, ?, ?, 'admin', 'active', 1, ?, ?)
+                    """,
+                    (admin_user_id, f"{admin_user_id}@{domain}", org_id, now_str, now_str)
+                )
         conn.commit()
         conn.close()
         logger.info(f"Domain {domain} verified successfully for org {org_id}. User {admin_user_id} promoted to verified Admin.")

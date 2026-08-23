@@ -368,7 +368,7 @@ Resources:
   CloudCostDetectiveAuditRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${{AWS::StackName}}-Role"
+      RoleName: CloudCostDetective-AuditRole
       Description: '{desc}'
       PermissionsBoundary: !Ref CloudCostDetectivePermissionsBoundary
       AssumeRolePolicyDocument:
