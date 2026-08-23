@@ -956,21 +956,25 @@ def check_and_bind_account(org_id: str, user_id: str, user_role: str, account_al
 
     # 1. Cross-Org Takeover Check
     if existing_acc and existing_acc.get("org_id") != org_id:
-        log_security_event(
-            event_type="CROSS_ORG_ACCOUNT_TAKEOVER_ATTEMPT",
-            user_id=user_id,
-            org_id=org_id,
-            target_arn=cleaned_arn,
-            ip_address=ip_address,
-            details={
-                "attempted_org": org_id,
-                "victim_org": existing_acc.get("org_id"),
-                "alias": account_alias
-            },
-            severity="CRITICAL"
-        )
-        # Generic error message to prevent leaking whether the ARN exists in another tenant
-        return False, "Unable to verify and bind this AWS Role. Please check your credentials or contact support.", None
+        # Allow if same AWS account and valid external_id / owner updating their org binding
+        is_same_account = existing_acc.get("aws_account_id") == aws_account_id
+        is_owner = existing_acc.get("created_by_user_id") == user_id or existing_acc.get("external_id") == external_id
+        if not (is_same_account and is_owner):
+            log_security_event(
+                event_type="CROSS_ORG_ACCOUNT_TAKEOVER_ATTEMPT",
+                user_id=user_id,
+                org_id=org_id,
+                target_arn=cleaned_arn,
+                ip_address=ip_address,
+                details={
+                    "attempted_org": org_id,
+                    "victim_org": existing_acc.get("org_id"),
+                    "alias": account_alias
+                },
+                severity="CRITICAL"
+            )
+            # Generic error message to prevent leaking whether the ARN exists in another tenant
+            return False, "Unable to verify and bind this AWS Role. Please check your credentials or contact support.", None
 
     # 2. Passed validation — save binding
     import uuid
