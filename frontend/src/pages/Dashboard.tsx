@@ -61,7 +61,8 @@ export default function Dashboard({ scanMode: _scanMode }: DashboardProps) {
   const loadAccounts = async () => {
     try {
       const res = await getCloudAccounts();
-      const accs = res.accounts || [];
+      const rawAccs = res.accounts || [];
+      const accs = Array.from(new Map(rawAccs.map(a => [a.id, a])).values());
       setCloudAccounts(accs);
       if (accs.length > 0) {
         setSelectedAccountId(prev => (prev && accs.some(a => a.id === prev) ? prev : accs[0].id));

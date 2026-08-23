@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   Shield,
+  ShieldCheck,
   LayoutDashboard,
   History,
   TrendingUp,
@@ -26,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/',          label: 'Dashboard',     icon: LayoutDashboard, end: true },
   { to: '/scan',      label: 'Run Scan',      icon: Scan },
   { to: '/quarantine', label: 'Quarantine',   icon: Shield },
+  { to: '/audit',     label: 'Audit & RBAC',  icon: ShieldCheck },
   { to: '/history',   label: 'History',       icon: History },
   { to: '/anomalies', label: 'Anomalies',     icon: AlertTriangle },
   { to: '/budgets',   label: 'Budgets',       icon: TrendingUp },

@@ -99,7 +99,7 @@ export interface CfnTemplateResponse {
 }
 
 export async function getCfnTemplate(
-  mode: 'readonly' | 'remediation' = 'readonly',
+  mode: 'readonly' | 'remediation' | 'admin' = 'readonly',
   durationDays?: number | null
 ): Promise<CfnTemplateResponse> {
   const query = new URLSearchParams({ mode });
@@ -191,4 +191,101 @@ export async function safeDeleteQuarantine(data: {
     body: JSON.stringify(data),
   });
 }
+
+// --- Audit & Security Log APIs ---
+
+export interface AuditLogItem {
+  id: string;
+  timestamp: string;
+  user_id: string;
+  user_email: string;
+  org_id: string;
+  action: string;
+  target_arn?: string;
+  tier?: string;
+  approval_chain?: string;
+  result: string;
+  details?: Record<string, any>;
+}
+
+export interface SecurityEventItem {
+  id: string;
+  timestamp: string;
+  event_type: string;
+  user_id: string;
+  org_id: string;
+  target_arn?: string;
+  ip_address?: string;
+  details?: Record<string, any>;
+  severity: string;
+}
+
+export interface RemediationApprovalItem {
+  id: string;
+  org_id: string;
+  requester_id: string;
+  requester_email: string;
+  approver_id?: string;
+  approver_email?: string;
+  action: string;
+  resource_id: string;
+  resource_arn?: string;
+  region: string;
+  account_id?: string;
+  environment: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reason?: string;
+  requested_at: string;
+  reviewed_at?: string;
+  executed_at?: string;
+}
+
+export interface OrgUserItem {
+  user_id: string;
+  email: string;
+  org_id: string;
+  role: string;
+  status: string;
+  domain_verified: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getAuditLogs(limit: number = 100): Promise<{ logs: AuditLogItem[]; viewer_role: string }> {
+  return apiFetch<{ logs: AuditLogItem[]; viewer_role: string }>(`/api/v1/audit/logs?limit=${limit}`);
+}
+
+export async function getSecurityEvents(limit: number = 50): Promise<{ events: SecurityEventItem[] }> {
+  return apiFetch<{ events: SecurityEventItem[] }>(`/api/v1/audit/security-events?limit=${limit}`);
+}
+
+export async function listRemediationApprovals(statusFilter?: string): Promise<{ approvals: RemediationApprovalItem[] }> {
+  const url = statusFilter ? `/api/v1/approvals?status_filter=${statusFilter}` : '/api/v1/approvals';
+  return apiFetch<{ approvals: RemediationApprovalItem[] }>(url);
+}
+
+export async function reviewRemediationApproval(approvalId: string, decision: 'approved' | 'rejected'): Promise<RemediationApprovalItem> {
+  return apiFetch<RemediationApprovalItem>(`/api/v1/approvals/${approvalId}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ decision }),
+  });
+}
+
+export async function executeRemediationApproval(approvalId: string): Promise<{ success: boolean; approval_id: string; result: any }> {
+  return apiFetch<{ success: boolean; approval_id: string; result: any }>(`/api/v1/approvals/${approvalId}/execute`, {
+    method: 'POST',
+  });
+}
+
+export async function listOrgUsers(): Promise<{ users: OrgUserItem[] }> {
+  return apiFetch<{ users: OrgUserItem[] }>('/api/v1/org/users');
+}
+
+export async function promoteOrgUser(userId: string, newRole: string, reason: string = ''): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>('/api/v1/org/promote', {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId, new_role: newRole, reason }),
+  });
+}
+
 

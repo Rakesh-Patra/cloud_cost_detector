@@ -16,6 +16,7 @@ import History from './pages/History';
 import Budgets from './pages/Budgets';
 import Anomalies from './pages/Anomalies';
 import { Quarantine } from './pages/Quarantine';
+import { AuditLogs } from './pages/AuditLogs';
 
 /** Full-app protected layout: sidebar + topbar + content area */
 function ProtectedLayout() {
@@ -93,6 +94,7 @@ export default function App() {
             <Route path="/anomalies" element={<Anomalies />} />
             <Route path="/budgets"   element={<Budgets />} />
             <Route path="/quarantine" element={<Quarantine />} />
+            <Route path="/audit"     element={<AuditLogs />} />
           </Route>
         </Route>
 

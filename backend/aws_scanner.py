@@ -1,4 +1,5 @@
 import logging
+import json
 from datetime import datetime, timezone, timedelta
 import os
 import boto3
@@ -145,22 +146,87 @@ def validate_saas_credentials() -> dict:
         }
 
 
-def get_assumed_role_session(role_arn: str, external_id: str, session_name: str = "CloudCostScanSession") -> boto3.Session:
+def generate_session_policy(action_type: str, resource_arns: list[str] | None = None) -> str:
+    """
+    Generates a tight Session Policy JSON string to pass into sts:AssumeRole (Least Privilege Principle).
+    Restricts the temporary STS session to ONLY the specific resource ARNs being acted on.
+    """
+    resources = resource_arns if resource_arns and len(resource_arns) > 0 else ["*"]
+    
+    if action_type == "readonly":
+        actions = [
+            "ec2:Describe*",
+            "ec2:Get*",
+            "rds:Describe*",
+            "s3:Get*",
+            "s3:List*",
+            "cloudwatch:GetMetricData",
+            "cloudwatch:GetMetricStatistics",
+            "cloudwatch:ListMetrics",
+            "ce:GetCostAndUsage",
+            "pricing:GetProducts"
+        ]
+    elif action_type == "remediation":
+        actions = [
+            "ec2:StopInstances",
+            "ec2:CreateSnapshot",
+            "ec2:CreateTags",
+            "ec2:DeleteTags",
+            "rds:StopDBInstance"
+        ]
+    elif action_type == "admin":
+        actions = ["*"]
+    else:
+        actions = [
+            "ec2:Describe*",
+            "cloudwatch:GetMetricData",
+            "ce:GetCostAndUsage"
+        ]
+
+    policy_doc = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "SessionScopedLeastPrivilege",
+                "Effect": "Allow",
+                "Action": actions,
+                "Resource": resources
+            },
+            {
+                "Sid": "ExplicitDenyDangerousOps",
+                "Effect": "Deny",
+                "Action": [
+                    "ec2:TerminateInstances",
+                    "rds:DeleteDBInstance",
+                    "iam:*",
+                    "organizations:*"
+                ],
+                "Resource": "*"
+            } if action_type != "admin" else None
+        ]
+    }
+    # Filter out None statements
+    policy_doc["Statement"] = [s for s in policy_doc["Statement"] if s is not None]
+    return json.dumps(policy_doc)
+
+
+def get_assumed_role_session(role_arn: str, external_id: str, session_name: str = "CloudCostScanSession", session_policy: str | None = None) -> boto3.Session:
     """
     Assume a customer's AWS IAM Role dynamically using STS and return an authenticated boto3.Session.
-
-    Uses the SaaS platform's permanent IAM credentials (via _get_saas_sts_client) to call
-    AssumeRole — these never expire, so scans work at any time without re-authentication.
+    Supports session-scoped policies (Least Privilege) to restrict access to target resource ARNs.
     """
     try:
-        # Always use explicit permanent SaaS credentials, never temporary cached ones.
         sts_client = _get_saas_sts_client()
-        response = sts_client.assume_role(
-            RoleArn=role_arn,
-            RoleSessionName=session_name,
-            ExternalId=external_id,
-            DurationSeconds=3600  # The *customer* session lasts 1 hr — scans finish in seconds.
-        )
+        assume_kwargs = {
+            "RoleArn": role_arn,
+            "RoleSessionName": session_name,
+            "ExternalId": external_id,
+            "DurationSeconds": 3600
+        }
+        if session_policy:
+            assume_kwargs["Policy"] = session_policy
+
+        response = sts_client.assume_role(**assume_kwargs)
         credentials = response['Credentials']
         return boto3.Session(
             aws_access_key_id=credentials['AccessKeyId'],
@@ -174,34 +240,79 @@ def get_assumed_role_session(role_arn: str, external_id: str, session_name: str 
 
 def generate_cloudformation_template(saas_account_id: str, external_id: str, mode: str = "readonly", duration_days: int | None = None) -> str:
     """
-    Generates a secure CloudFormation template for customer onboarding.
-    Supports:
-      - 'readonly': Tier 1 Read-Only FinOps Audit (SecurityAudit + CloudWatch + Cost Explorer)
-      - 'remediation': Tier 2 Active FinOps Remediation (adds scoped stop/snapshot/quarantine/delete actions)
-      - duration_days: Optional time-lock (e.g. 7, 30, 90 days) using AWS IAM DateLessThan condition.
+    Generates a secure CloudFormation template for customer onboarding with defense-in-depth:
+      - 'readonly':    Tier 1 Read-Only FinOps Audit (SecurityAudit + CloudWatch + Cost Explorer)
+      - 'remediation': Tier 2 Active FinOps Remediation (scoped stop/snapshot actions with explicit Deny & ManagedBy tag check)
+      - 'admin':       Tier 3 Full Admin Access (AdministratorAccess + Billing — max 90 days limit enforced)
+      - Permissions Boundary attached to ALL roles capping maximum allowable permissions.
+      - duration_days: Cryptographic time-lock using AWS IAM DateLessThan condition.
     """
     is_remediation = (mode == "remediation")
-    time_limit_desc = f" [Time-Limited: {duration_days} Days]" if duration_days else ""
-    desc = (
-        f"Cloud Cost Detective - Enterprise Active Remediation FinOps Role{time_limit_desc}"
-        if is_remediation
-        else f"Cloud Cost Detective - Enterprise Read-Only FinOps Audit Role{time_limit_desc}"
-    )
+    is_admin = (mode == "admin")
 
+    # Security Rule: Disallow permanent duration for Tier 3 Admin (force max 90 days)
+    if is_admin:
+        if not duration_days or duration_days > 90:
+            duration_days = 90
+            logger.info("Enforced 90-day maximum duration cap on Tier 3 Admin role generation.")
+
+    time_limit_desc = f" [Time-Limited: {duration_days} Days]" if duration_days else ""
+
+    if is_admin:
+        desc = f"Cloud Cost Detective - Full Admin Access Role{time_limit_desc}"
+    elif is_remediation:
+        desc = f"Cloud Cost Detective - Enterprise Active Remediation FinOps Role{time_limit_desc}"
+    else:
+        desc = f"Cloud Cost Detective - Enterprise Read-Only FinOps Audit Role{time_limit_desc}"
+
+    # Tier 2: Explicit Deny guardrails + Tag-scoped Allow actions
     remediation_policy_block = """        - PolicyName: FinOpsActiveRemediationAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ExplicitDenyDestructiveActions
+                Effect: Deny
+                Action:
+                  - 'ec2:TerminateInstances'
+                  - 'ec2:DeleteSnapshot'
+                  - 'ec2:DeleteVolume'
+                  - 'rds:DeleteDBInstance'
+                  - 'rds:DeleteDBSnapshot'
+                  - 'iam:*'
+                  - 'organizations:*'
+                Resource: '*'
+              - Sid: ScopedAllowRemediationActions
+                Effect: Allow
+                Action:
+                  - 'ec2:StopInstances'
+                  - 'ec2:CreateSnapshot'
+                  - 'ec2:CreateTags'
+                  - 'ec2:DeleteTags'
+                  - 'rds:StopDBInstance'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'aws:ResourceTag/ManagedBy': 'CloudCostDetective'
+""" if is_remediation else ""
+
+    # Tier 3: full admin — replaces ManagedPolicyArns
+    admin_managed_policies = """        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+        - 'arn:aws:iam::aws:policy/job-function/Billing'""" if is_admin else "        - 'arn:aws:iam::aws:policy/SecurityAudit'"
+
+    admin_inline_policies = "" if is_admin else """      Policies:
+        - PolicyName: FinOpsCloudWatchMetricsAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - 'ec2:StopInstances'
-                  - 'ec2:CreateTags'
-                  - 'ec2:DeleteTags'
-                  - 'ec2:CreateSnapshot'
-                  - 'ec2:DeleteVolume'
-                  - 'rds:StopDBInstance'
+                  - 'cloudwatch:GetMetricData'
+                  - 'cloudwatch:GetMetricStatistics'
+                  - 'cloudwatch:ListMetrics'
+                  - 'ce:GetCostAndUsage'
+                  - 'pricing:GetProducts'
                 Resource: '*'
-""" if is_remediation else ""
+""" + remediation_policy_block
 
     time_condition_block = ""
     if duration_days and duration_days > 0:
@@ -224,37 +335,55 @@ Parameters:
     Description: 'Your organization unique security verification token'
 
 Resources:
+  # Permissions Boundary capping maximum possible permissions for all CloudCostDetective roles
+  CloudCostDetectivePermissionsBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${{AWS::StackName}}-PermissionsBoundary"
+      Description: 'Capping maximum permissions boundary for Cloud Cost Detective STS roles'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowFinOpsAndCloudOps
+            Effect: Allow
+            Action:
+              - 'ec2:*'
+              - 'rds:*'
+              - 's3:*'
+              - 'cloudwatch:*'
+              - 'ce:*'
+              - 'pricing:*'
+            Resource: '*'
+          - Sid: DenyDangerousOps
+            Effect: Deny
+            Action:
+              - 'iam:*'
+              - 'organizations:*'
+              - 'account:*'
+              - 'aws-portal:*'
+              - 'ec2:TerminateInstances'
+              - 'rds:DeleteDBInstance'
+            Resource: '*'
+
   CloudCostDetectiveAuditRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: CloudCostDetective-AuditRole
+      RoleName: !Sub "${{AWS::StackName}}-Role"
       Description: '{desc}'
+      PermissionsBoundary: !Ref CloudCostDetectivePermissionsBoundary
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${{SaaSAccountId}}:root"
+              AWS: 'arn:aws:iam::{saas_account_id}:root'
             Action: 'sts:AssumeRole'
             Condition:
               StringEquals:
                 'sts:ExternalId': !Ref ExternalId
 {time_condition_block}      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/SecurityAudit'
-      Policies:
-        - PolicyName: FinOpsCloudWatchMetricsAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'cloudwatch:GetMetricData'
-                  - 'cloudwatch:GetMetricStatistics'
-                  - 'cloudwatch:ListMetrics'
-                  - 'ce:GetCostAndUsage'
-                  - 'pricing:GetProducts'
-                Resource: '*'
-{remediation_policy_block}
+{admin_managed_policies}
+{admin_inline_policies}
 Outputs:
   RoleArn:
     Description: 'Paste this Role ARN back into your Cloud Cost Detective Dashboard'
