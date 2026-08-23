@@ -160,6 +160,17 @@ export default function Dashboard({ scanMode: _scanMode }: DashboardProps) {
       console.warn('WebSocket setup failed — scan proceeds without live progress');
     }
 
+    // Progressive step timers to ensure smooth visual feedback
+    const timer1 = setTimeout(() => {
+      setProgressLogs(prev => [...prev, `Scanning EC2, EBS, and RDS resources in ${selectedRegion}...`]);
+    }, 2000);
+    const timer2 = setTimeout(() => {
+      setProgressLogs(prev => [...prev, 'Generating structured cost analysis via Gemini AI...']);
+    }, 5000);
+    const timer3 = setTimeout(() => {
+      setProgressLogs(prev => [...prev, 'Persisting audit metrics to InsForge Cloud...']);
+    }, 8000);
+
     try {
       const payloadBody: any = { region: selectedRegion, analysis_id: analysisId };
       if (selectedAccountId) {
@@ -171,15 +182,24 @@ export default function Dashboard({ scanMode: _scanMode }: DashboardProps) {
         body: JSON.stringify(payloadBody),
       });
 
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+      setProgressLogs(prev => [...prev, 'Analysis complete']);
+
       sessionStorage.setItem('latestScanResult', JSON.stringify(data));
       navigate('/report', { state: { scanResult: data } });
     } catch (err: any) {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
       setScanError(true);
       const msg = err.message || 'An error occurred during scanning.';
       setScanErrorMsg(msg);
       setProgressLogs(prev => [...prev, `Analysis failed: ${msg}`]);
     } finally {
       setScanning(false);
+      try { ws?.close(); } catch {}
     }
   };
 

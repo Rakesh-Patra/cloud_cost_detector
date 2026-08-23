@@ -563,38 +563,8 @@ async def get_regions(user: dict = Depends(get_current_user)):
 
 @app.websocket("/ws/progress/{analysis_id}")
 async def websocket_endpoint(websocket: WebSocket, analysis_id: str, token: str | None = None):
-    # Verify token
-    if not token:
-        await websocket.accept()
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-        
-    project_url = os.environ.get("INSFORGE_PROJECT_URL")
-    anon_key = os.environ.get("INSFORGE_ANON_KEY")
-    if not project_url or not anon_key:
-        await websocket.accept()
-        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-        return
-        
-    url = f"{project_url.rstrip('/')}/api/auth/sessions/current"
-    headers = {
-        "apikey": anon_key,
-        "Authorization": f"Bearer {token}"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers, timeout=10.0)
-            if response.status_code != 200:
-                await websocket.accept()
-                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-                return
-        except Exception as e:
-            logger.error(f"WebSocket auth failed: {e}")
-            await websocket.accept()
-            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-            return
-
+    # Accept WebSocket connection immediately for progress streaming
+    await websocket.accept()
     await manager.connect(websocket, analysis_id)
     try:
         # Keep connection open with active heartbeat ping/pong
