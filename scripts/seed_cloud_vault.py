@@ -86,7 +86,13 @@ def main():
         with open(ssh_key, "r", encoding="utf-8") as f:
             ssh_key = f.read()
     elif not ssh_key:
-        for possible_key in ["id_rsa", "terrakey", "terraform/terrakey"]:
+        for possible_key in [
+            "terraform/environment/dev/cloud_cost.pem",
+            "cloud_cost.pem",
+            "id_rsa",
+            "terrakey",
+            "terraform/terrakey"
+        ]:
             if os.path.exists(possible_key):
                 with open(possible_key, "r", encoding="utf-8") as f:
                     ssh_key = f.read()
