@@ -696,40 +696,30 @@ def scan_all_resources(region: str, session: boto3.Session = None) -> list:
     except EndpointConnectionError as e:
         raise AWSRegionException(f"Could not connect to the AWS endpoint in region '{region}'. Verify connection or region name.") from e
         
-    resources = []
-    
-    # Scan EC2 instances
-    try:
-        resources.extend(scan_ec2_instances(session, region))
-    except AWSScannerException as e:
-        logger.error(f"Error scanning EC2: {str(e)}")
-        # Raise if it's credential/auth or region related since that impacts all scans
-        if isinstance(e, (AWSCredentialException, AWSRegionException, AWSRateLimitException)):
-            raise e
-            
-    # Scan EBS volumes
-    try:
-        resources.extend(scan_ebs_volumes(session, region))
-    except AWSScannerException as e:
-        logger.error(f"Error scanning EBS: {str(e)}")
-        if isinstance(e, (AWSCredentialException, AWSRegionException, AWSRateLimitException)):
-            raise e
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # Scan RDS resources
-    try:
-        resources.extend(scan_rds_resources(session, region))
-    except AWSScannerException as e:
-        logger.error(f"Error scanning RDS: {str(e)}")
-        if isinstance(e, (AWSCredentialException, AWSRegionException, AWSRateLimitException)):
-            raise e
-            
-    # Scan S3 buckets
-    try:
-        resources.extend(scan_s3_buckets(session, region))
-    except AWSScannerException as e:
-        logger.error(f"Error scanning S3: {str(e)}")
-        if isinstance(e, (AWSCredentialException, AWSRegionException, AWSRateLimitException)):
-            raise e
+    resources = []
+    scan_funcs = [
+        ("EC2", scan_ec2_instances),
+        ("EBS", scan_ebs_volumes),
+        ("RDS", scan_rds_resources),
+        ("S3", scan_s3_buckets),
+    ]
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(f, session, region): name for name, f in scan_funcs}
+        for fut in as_completed(futures):
+            name = futures[fut]
+            try:
+                result = fut.result()
+                if result:
+                    resources.extend(result)
+            except AWSScannerException as e:
+                logger.error(f"Error scanning {name}: {str(e)}")
+                if isinstance(e, (AWSCredentialException, AWSRegionException, AWSRateLimitException)):
+                    raise e
+            except Exception as e:
+                logger.error(f"Unexpected error scanning {name}: {str(e)}")
             
     return resources
 

@@ -48,7 +48,7 @@ class InsForgeClient:
         params: dict = None,
         json_data: dict = None,
         with_prefer: str = None,
-        timeout: float = 10.0
+        timeout: float = 3.0
     ) -> httpx.Response:
         """
         Sends an HTTP request to InsForge. If the request fails with 401 Unauthorized
