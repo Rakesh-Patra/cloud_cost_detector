@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
   Shield,
   LayoutDashboard,
@@ -39,23 +39,22 @@ interface SidebarProps {
 export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [userEmail, setUserEmail] = useState('');
-  const navigate = useNavigate();
+
 
   useEffect(() => {
-    const readUser = () => {
-      const u = (insforge as any).tokenManager.getUser();
-      setUserEmail(u?.email ?? '');
-    };
-    readUser();
-    (insforge as any).tokenManager.onTokenChange = readUser;
-    return () => { (insforge as any).tokenManager.onTokenChange = null; };
+    const u = (insforge as any).tokenManager?.getUser();
+    setUserEmail(u?.email ?? '');
   }, []);
 
   const handleLogout = async () => {
-    // Clear any cached scan data from session storage on logout
-    sessionStorage.removeItem('latestScanResult');
-    await insforge.auth.signOut();
-    navigate('/login');
+    sessionStorage.clear();
+    localStorage.clear();
+    try {
+      await insforge.auth.signOut();
+    } catch (e) {
+      console.warn('Sign out error:', e);
+    }
+    window.location.href = '/login';
   };
 
   const NavContent = () => (

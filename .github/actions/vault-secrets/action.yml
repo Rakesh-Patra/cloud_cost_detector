@@ -110,7 +110,7 @@ runs:
       with:
         url: ${{ inputs.vault-url }}
         role: ${{ inputs.vault-role }}
-        namespace: ${{ inputs.vault-namespace }}
+        namespace: ${{ inputs.vault-namespace != '' && inputs.vault-namespace || (contains(inputs.vault-url, 'hashicorp.cloud') && 'admin' || '') }}
         method: jwt
         secrets: ${{ inputs.vault-secrets }}
 

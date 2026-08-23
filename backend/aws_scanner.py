@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone, timedelta
+import os
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError, EndpointConnectionError
 
@@ -56,17 +57,109 @@ def handle_boto_errors(func):
     return wrapper
 
 
+# ---------------------------------------------------------------------------
+# SaaS-side permanent credentials helpers
+# ---------------------------------------------------------------------------
+
+def _get_saas_sts_client():
+    """
+    Build the STS client used by THIS SaaS platform to call AssumeRole.
+
+    Always reads credentials explicitly from environment variables
+    (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) so boto3 never accidentally
+    picks up short-lived / temporary credentials that were cached in
+    ~/.aws/credentials and expire after 1 hour.
+
+    Set these two env vars to a *permanent* IAM User Access Key that has
+    only the sts:AssumeRole permission.  They never expire unless manually
+    rotated.
+    """
+    access_key = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
+    secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
+    region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1").strip()
+
+    if not access_key or not secret_key:
+        logger.warning(
+            "AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY is not set in the environment. "
+            "Falling back to boto3 default credential chain — if those are temporary "
+            "credentials they will expire and cause InvalidClientTokenId errors."
+        )
+        # Fall back so existing deployments that use instance profiles still work.
+        return boto3.client("sts", region_name=region)
+
+    # Explicit permanent credentials — never expire on their own.
+    return boto3.client(
+        "sts",
+        region_name=region,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        # No aws_session_token → this is a permanent IAM User key, not a temp token.
+    )
+
+
+def validate_saas_credentials() -> dict:
+    """
+    Validate that the SaaS-side AWS credentials are valid and permanent.
+    Called once at application startup.
+
+    Returns a dict with keys: ok (bool), account_id (str), arn (str), message (str).
+    """
+    try:
+        sts = _get_saas_sts_client()
+        identity = sts.get_caller_identity()
+        account_id = identity.get("Account", "unknown")
+        arn = identity.get("Arn", "unknown")
+
+        # Warn loudly if the current identity is a temporary assumed-role session.
+        if ":assumed-role/" in arn:
+            logger.warning(
+                "SaaS AWS identity is a TEMPORARY assumed-role session (%s). "
+                "These credentials expire (typically in 1 hour) and will cause "
+                "InvalidClientTokenId errors on scans. "
+                "Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY to a permanent "
+                "IAM User key instead.", arn
+            )
+            return {
+                "ok": False,
+                "account_id": account_id,
+                "arn": arn,
+                "message": (
+                    f"WARNING: SaaS credentials are temporary (assumed-role). "
+                    f"They will expire. Set permanent IAM User keys in the environment. ARN: {arn}"
+                ),
+            }
+
+        logger.info("SaaS AWS credentials validated OK. Account: %s, ARN: %s", account_id, arn)
+        return {"ok": True, "account_id": account_id, "arn": arn, "message": "Permanent credentials confirmed."}
+
+    except Exception as e:
+        logger.error("SaaS AWS credential validation FAILED: %s", e)
+        return {
+            "ok": False,
+            "account_id": "",
+            "arn": "",
+            "message": (
+                f"SaaS AWS credentials are missing or invalid: {e}. "
+                "Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY to a permanent IAM User key."
+            ),
+        }
+
+
 def get_assumed_role_session(role_arn: str, external_id: str, session_name: str = "CloudCostScanSession") -> boto3.Session:
     """
     Assume a customer's AWS IAM Role dynamically using STS and return an authenticated boto3.Session.
+
+    Uses the SaaS platform's permanent IAM credentials (via _get_saas_sts_client) to call
+    AssumeRole — these never expire, so scans work at any time without re-authentication.
     """
     try:
-        sts_client = boto3.client('sts', region_name='us-east-1')
+        # Always use explicit permanent SaaS credentials, never temporary cached ones.
+        sts_client = _get_saas_sts_client()
         response = sts_client.assume_role(
             RoleArn=role_arn,
             RoleSessionName=session_name,
             ExternalId=external_id,
-            DurationSeconds=3600
+            DurationSeconds=3600  # The *customer* session lasts 1 hr — scans finish in seconds.
         )
         credentials = response['Credentials']
         return boto3.Session(
@@ -79,12 +172,46 @@ def get_assumed_role_session(role_arn: str, external_id: str, session_name: str 
         raise AWSCredentialException(f"Failed to assume customer role: {str(e)}") from e
 
 
-def generate_cloudformation_template(saas_account_id: str, external_id: str) -> str:
+def generate_cloudformation_template(saas_account_id: str, external_id: str, mode: str = "readonly", duration_days: int | None = None) -> str:
     """
-    Generates a secure, read-only CloudFormation template for customer onboarding.
+    Generates a secure CloudFormation template for customer onboarding.
+    Supports:
+      - 'readonly': Tier 1 Read-Only FinOps Audit (SecurityAudit + CloudWatch + Cost Explorer)
+      - 'remediation': Tier 2 Active FinOps Remediation (adds scoped stop/snapshot/quarantine/delete actions)
+      - duration_days: Optional time-lock (e.g. 7, 30, 90 days) using AWS IAM DateLessThan condition.
     """
+    is_remediation = (mode == "remediation")
+    time_limit_desc = f" [Time-Limited: {duration_days} Days]" if duration_days else ""
+    desc = (
+        f"Cloud Cost Detective - Enterprise Active Remediation FinOps Role{time_limit_desc}"
+        if is_remediation
+        else f"Cloud Cost Detective - Enterprise Read-Only FinOps Audit Role{time_limit_desc}"
+    )
+
+    remediation_policy_block = """        - PolicyName: FinOpsActiveRemediationAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ec2:StopInstances'
+                  - 'ec2:CreateTags'
+                  - 'ec2:DeleteTags'
+                  - 'ec2:CreateSnapshot'
+                  - 'ec2:DeleteVolume'
+                  - 'rds:StopDBInstance'
+                Resource: '*'
+""" if is_remediation else ""
+
+    time_condition_block = ""
+    if duration_days and duration_days > 0:
+        expiry_iso = (datetime.now(timezone.utc) + timedelta(days=duration_days)).strftime("%Y-%m-%dT23:59:59Z")
+        time_condition_block = f"""              DateLessThan:
+                'aws:CurrentTime': '{expiry_iso}'
+"""
+
     return f"""AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Cloud Cost Detective - Enterprise Read-Only FinOps Audit Role'
+Description: '{desc}'
 
 Parameters:
   SaaSAccountId:
@@ -101,7 +228,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: CloudCostDetective-AuditRole
-      Description: 'Read-only role enabling automated FinOps and cost optimization analysis'
+      Description: '{desc}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -112,7 +239,7 @@ Resources:
             Condition:
               StringEquals:
                 'sts:ExternalId': !Ref ExternalId
-      ManagedPolicyArns:
+{time_condition_block}      ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/SecurityAudit'
       Policies:
         - PolicyName: FinOpsCloudWatchMetricsAccess
@@ -127,7 +254,7 @@ Resources:
                   - 'ce:GetCostAndUsage'
                   - 'pricing:GetProducts'
                 Resource: '*'
-
+{remediation_policy_block}
 Outputs:
   RoleArn:
     Description: 'Paste this Role ARN back into your Cloud Cost Detective Dashboard'
@@ -408,11 +535,13 @@ def scan_s3_buckets(session: boto3.Session, region: str) -> list:
     return resources
 
 
-def scan_all_resources(region: str) -> list:
+def scan_all_resources(region: str, session: boto3.Session = None) -> list:
     """
     Run scans for EC2, EBS, RDS, and S3 within the specified region and consolidate.
+    Supports assumed role session for connected multi-tenant AWS accounts.
     """
-    session = boto3.Session()
+    if session is None:
+        session = boto3.Session()
     
     # Validate session/credentials first by attempting to use sts or checking if credentials exist
     try:

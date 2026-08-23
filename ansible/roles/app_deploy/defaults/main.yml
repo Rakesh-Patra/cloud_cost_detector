@@ -32,5 +32,8 @@ aws_region: "us-east-1"
 ghcr_username: ""
 ghcr_token: ""
 
+# Cloudflare Tunnel Token (optional, for HTTPS access without inbound ports)
+cloudflare_tunnel_token: ""
+
 # Docker Compose restart policy
 restart_policy: "unless-stopped"

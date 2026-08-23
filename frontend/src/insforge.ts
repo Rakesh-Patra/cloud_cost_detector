@@ -13,15 +13,8 @@ import { createClient } from "@insforge/sdk";
  *
  * See frontend/.env.example for the expected format.
  */
-const baseUrl = import.meta.env.VITE_INSFORGE_PROJECT_URL as string | undefined;
-const anonKey = import.meta.env.VITE_INSFORGE_ANON_KEY as string | undefined;
-
-if (!baseUrl || !anonKey) {
-  throw new Error(
-    "[Cloud Cost Detective] Missing required environment variables.\n" +
-    "  VITE_INSFORGE_PROJECT_URL and VITE_INSFORGE_ANON_KEY must be set in frontend/.env\n" +
-    "  See frontend/.env.example for the expected format."
-  );
-}
+const baseUrl = (import.meta.env.VITE_INSFORGE_PROJECT_URL as string | undefined) || "";
+const anonKey = (import.meta.env.VITE_INSFORGE_ANON_KEY as string | undefined) || "";
 
 export const insforge = createClient({ baseUrl, anonKey });
+

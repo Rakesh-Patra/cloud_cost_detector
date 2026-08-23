@@ -86,6 +86,7 @@ export interface CloudAccount {
   regions: string[];
   created_at: string;
   last_scanned_at?: string;
+  expires_at?: string | null;
 }
 
 export interface CfnTemplateResponse {
@@ -93,10 +94,19 @@ export interface CfnTemplateResponse {
   saas_account_id: string;
   cfn_yaml: string;
   quick_create_url: string;
+  mode?: string;
+  duration_days?: number | null;
 }
 
-export async function getCfnTemplate(): Promise<CfnTemplateResponse> {
-  return apiFetch<CfnTemplateResponse>('/api/v1/accounts/cfn-template');
+export async function getCfnTemplate(
+  mode: 'readonly' | 'remediation' = 'readonly',
+  durationDays?: number | null
+): Promise<CfnTemplateResponse> {
+  const query = new URLSearchParams({ mode });
+  if (durationDays && durationDays > 0) {
+    query.set('duration_days', durationDays.toString());
+  }
+  return apiFetch<CfnTemplateResponse>(`/api/v1/accounts/cfn-template?${query.toString()}`);
 }
 
 export async function getCloudAccounts(): Promise<{ accounts: CloudAccount[] }> {
@@ -109,6 +119,7 @@ export async function connectCloudAccount(data: {
   role_arn: string;
   external_id: string;
   regions?: string[];
+  duration_days?: number | null;
 }): Promise<CloudAccount> {
   return apiFetch<CloudAccount>('/api/v1/accounts/connect', {
     method: 'POST',

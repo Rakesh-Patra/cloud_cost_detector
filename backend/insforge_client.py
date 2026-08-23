@@ -180,7 +180,15 @@ class InsForgeClient:
                     logger.error(f"Failed to fetch history from InsForge: {response.status_code} - {response.text}")
                     raise InsForgeException(f"InsForge history query failed (status {response.status_code}): {response.text}")
                 
-                return response.json()
+                records = response.json()
+                if not records and token and token != self.anon_key:
+                    logger.info("User-scoped history returned 0 records, attempting anon query fallback")
+                    anon_headers = self._get_headers(token=None)
+                    anon_resp = await client.request("GET", url, params=params, headers=anon_headers, timeout=10.0)
+                    if anon_resp.status_code == 200:
+                        records = anon_resp.json()
+                
+                return records
             except Exception as e:
                 logger.error(f"Error querying history from InsForge: {str(e)}")
                 if isinstance(e, InsForgeException):

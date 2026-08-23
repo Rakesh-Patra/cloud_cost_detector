@@ -29,6 +29,7 @@ from aws_scanner import (
     safe_delete_ebs_volume,
     quarantine_resource,
     restore_quarantined_resource,
+    validate_saas_credentials,
     AWSCredentialException,
     AWSRegionException,
     AWSRateLimitException,
@@ -67,6 +68,25 @@ db_client = InsForgeClient()
 async def lifespan(app: FastAPI):
     """Modern FastAPI lifespan context manager for startup and graceful shutdown."""
     database.init_db()
+
+    # --- Credential Health Check ---
+    # Validate the SaaS-side AWS credentials on every startup.
+    # If they are temporary (e.g., assumed-role from a CloudFormation session) they
+    # will expire in ~1 hour and cause InvalidClientTokenId errors on all scans.
+    # Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY to a permanent IAM User key to fix this.
+    cred_status = validate_saas_credentials()
+    if cred_status["ok"]:
+        logger.info(
+            "✅ SaaS AWS credentials are permanent. Account: %s | ARN: %s",
+            cred_status["account_id"],
+            cred_status["arn"],
+        )
+    else:
+        logger.warning(
+            "⚠️  SaaS AWS credential issue detected at startup: %s",
+            cred_status["message"],
+        )
+
     scanner_task = asyncio.create_task(daily_anomaly_scanner_loop())
     logger.info("Application startup completed successfully with DB initialized and scheduler running.")
     yield
@@ -137,12 +157,18 @@ class AnalyzeRequest(BaseModel):
     analysis_id: str | None = Field(None, description="Optional UUID to track progress via WebSockets")
     account_id: str | None = Field(None, description="Optional connected Cloud Account ID for STS AssumeRole")
 
+class AnalyzeMultiRegionRequest(BaseModel):
+    regions: list[str] = Field(default=["us-east-1", "us-east-2", "us-west-2", "eu-west-1"], description="List of AWS regions to scan concurrently")
+    analysis_id: str | None = Field(None, description="Optional UUID to track progress via WebSockets")
+    account_id: str | None = Field(None, description="Optional connected Cloud Account ID for STS AssumeRole")
+
 class ConnectAccountRequest(BaseModel):
     account_alias: str = Field(..., description="Friendly name for the account, e.g., 'Production-AWS'")
     aws_account_id: str = Field(..., description="12-digit AWS Account ID")
     role_arn: str = Field(..., description="The IAM Role ARN created in customer account")
     external_id: str = Field(..., description="The unique external ID for security handshake")
     regions: list[str] = Field(default=["us-east-1", "us-east-2", "us-west-2", "eu-west-1"])
+    duration_days: int | None = Field(None, description="Optional access grant duration in days (e.g. 7, 30, 90)")
 
 class QuarantineApplyRequest(BaseModel):
     resource_id: str = Field(..., description="AWS Resource ID (e.g. vol-1234, i-5678)")
@@ -225,6 +251,10 @@ async def insforge_exception_handler(request, exc):
     )
 
 class ConnectionManager:
+    """
+    Manages active WebSocket progress connections for scan tracking.
+    Supports in-memory client pooling and safe concurrent broadcast.
+    """
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
 
@@ -237,7 +267,8 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket, analysis_id: str):
         if analysis_id in self.active_connections:
-            self.active_connections[analysis_id].remove(websocket)
+            if websocket in self.active_connections[analysis_id]:
+                self.active_connections[analysis_id].remove(websocket)
             if not self.active_connections[analysis_id]:
                 del self.active_connections[analysis_id]
         logger.info(f"WebSocket client disconnected from progress stream for analysis_id: {analysis_id}")
@@ -245,7 +276,7 @@ class ConnectionManager:
     async def broadcast(self, analysis_id: str, message: str):
         if analysis_id in self.active_connections:
             logger.info(f"Broadcasting to {analysis_id}: {message}")
-            for connection in self.active_connections[analysis_id]:
+            for connection in list(self.active_connections[analysis_id]):
                 try:
                     await connection.send_text(message)
                 except Exception as e:
@@ -282,7 +313,7 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": "AUTHENTICATION_REQUIRED", "message": "Authorization header with Bearer token or valid X-API-Key is required."}
             )
-        return {"user": {"email": "guest@local.user", "role": "devops"}, "token": "guest-token"}
+        return {"user": {"id": "dev-user-id", "email": "guest@local.user", "role": "devops"}, "token": "guest-token"}
     
     token = authorization.split(" ")[1].strip()
     if not token:
@@ -291,7 +322,7 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": "AUTHENTICATION_REQUIRED", "message": "Bearer token must not be empty."}
             )
-        return {"user": {"email": "guest@local.user"}, "token": "guest-token"}
+        return {"user": {"id": "dev-user-id", "email": "guest@local.user", "role": "devops"}, "token": "guest-token"}
     
     project_url = os.environ.get("INSFORGE_PROJECT_URL")
     anon_key = os.environ.get("INSFORGE_ANON_KEY")
@@ -302,39 +333,71 @@ async def get_current_user(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail={"error": "AUTH_CONFIGURATION_ERROR", "message": "Authentication service is not properly configured."}
             )
-        return {"user": {"email": "guest@local.user"}, "token": None}
-        
-    url = f"{project_url.rstrip('/')}/api/auth/sessions/current"
+
+    # Decode user information directly from JWT token payload (for claim inspection / dev fallback)
+    decoded_user = {"id": "local-user-id", "email": "guest@local.user", "role": "viewer"}
+    try:
+        parts = token.split(".")
+        if len(parts) >= 2:
+            import base64
+            p = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+            data = json.loads(base64.urlsafe_b64decode(p).decode("utf-8", "ignore"))
+            if data.get("sub") or data.get("email"):
+                decoded_user = {
+                    "id": data.get("sub") or "local-user-id",
+                    "email": data.get("email") or "guest@local.user",
+                    "role": data.get("role") or data.get("user_metadata", {}).get("role") or ("viewer" if is_prod else "devops")
+                }
+    except Exception as decode_err:
+        logger.debug(f"Could not parse JWT payload: {decode_err}")
+
+    url = f"{project_url.rstrip('/')}/api/auth/sessions/current" if project_url else ""
     headers = {
-        "apikey": anon_key,
+        "apikey": anon_key or "",
         "Authorization": f"Bearer {token}"
     }
     
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers, timeout=10.0)
-            if response.status_code != 200:
+    if url:
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, headers=headers, timeout=10.0)
+                if response.status_code != 200:
+                    if is_prod:
+                        logger.warning(f"InsForge session verification failed with status {response.status_code}")
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail={"error": "INVALID_SESSION", "message": "The provided authentication token is invalid or expired."}
+                        )
+                    logger.info(f"InsForge session check returned {response.status_code}, using decoded token identity in dev: {decoded_user.get('email')}")
+                    return {"user": decoded_user, "token": token}
+                
+                resp_user = response.json().get("user") or decoded_user
+                return {
+                    "user": resp_user,
+                    "token": token
+                }
+            except HTTPException:
+                raise
+            except httpx.RequestError as e:
                 if is_prod:
-                    logger.warning(f"Invalid session token in production environment (status {response.status_code})")
+                    logger.error(f"Auth service connection error in production: {e}")
                     raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail={"error": "INVALID_SESSION", "message": "Invalid or expired session token."}
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail={"error": "AUTH_SERVICE_UNAVAILABLE", "message": f"Authentication service unavailable: {str(e)}"}
                     )
-                logger.warning(f"InsForge session check returned status {response.status_code}, using dev fallback user")
-                return {"user": {"email": "dev@local.user"}, "token": None}
-            return {
-                "user": response.json().get("user"),
-                "token": token
-            }
-        except httpx.RequestError as e:
-            if is_prod:
-                logger.error(f"Error connecting to InsForge Auth in production: {e}")
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail={"error": "AUTH_SERVICE_UNAVAILABLE", "message": "Authentication service is temporarily unavailable."}
-                )
-            logger.warning(f"Error connecting to InsForge Auth ({e}), using dev fallback user")
-            return {"user": {"email": "dev@local.user"}, "token": None}
+                logger.warning(f"Error checking InsForge session in dev ({e}), using decoded token identity: {decoded_user.get('email')}")
+                return {"user": decoded_user, "token": token}
+            except Exception as e:
+                if is_prod:
+                    logger.error(f"Unexpected auth error in production: {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail={"error": "AUTH_INTERNAL_ERROR", "message": "Failed to verify session."}
+                    )
+                return {"user": decoded_user, "token": token}
+
+    return {"user": decoded_user, "token": token}
+
     
 
 def get_user_org_id(user: dict) -> str:
@@ -501,23 +564,35 @@ async def analyze_region(request: Request, payload: AnalyzeRequest, user: dict =
     
     # 1. Establish AWS Session (dynamic STS AssumeRole if account_id is supplied)
     session = None
+    user_org = get_user_org_id(user)
     if payload.account_id:
-        acc = database.get_cloud_account(payload.account_id)
-        if acc:
-            try:
-                await manager.broadcast(analysis_id, f"Connecting to AWS Account ({acc.get('account_alias')}) via STS AssumeRole...")
-                user_email = user.get("user", {}).get("email") or "finops-user"
-                import re
-                safe_session_name = re.sub(r'[^a-zA-Z0-9+=,.@-]', '-', user_email)[:64]
-                session = get_assumed_role_session(acc["role_arn"], acc["external_id"], session_name=safe_session_name)
-                database.update_cloud_account_last_scanned(payload.account_id)
-            except Exception as sts_err:
-                logger.error(f"Failed to assume role for account {payload.account_id}: {sts_err}")
-                await manager.broadcast(analysis_id, f"STS Authentication failed: {str(sts_err)}")
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Failed to authenticate with AWS Account via STS: {str(sts_err)}"
-                )
+        acc = database.get_cloud_account(payload.account_id, org_id=user_org)
+        if not acc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Cloud Account '{payload.account_id}' not found or access denied."
+            )
+        if acc.get("status") == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cloud Account access has expired on {acc.get('expires_at')}. Please refresh or renew permissions."
+            )
+        try:
+            await manager.broadcast(analysis_id, f"Connecting to AWS Account ({acc.get('account_alias')}) via STS AssumeRole...")
+            user_email = user.get("user", {}).get("email") or "finops-user"
+            import re
+            safe_session_name = re.sub(r'[^a-zA-Z0-9+=,.@-]', '-', user_email)[:64]
+            session = get_assumed_role_session(acc["role_arn"], acc["external_id"], session_name=safe_session_name)
+            database.update_cloud_account_last_scanned(payload.account_id)
+        except HTTPException:
+            raise
+        except Exception as sts_err:
+            logger.error(f"Failed to assume role for account {payload.account_id}: {sts_err}")
+            await manager.broadcast(analysis_id, f"STS Authentication failed: {str(sts_err)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Failed to authenticate with AWS Account via STS: {str(sts_err)}"
+            )
 
     try:
         # Step 1: Initializing clients
@@ -596,6 +671,87 @@ async def analyze_region(request: Request, payload: AnalyzeRequest, user: dict =
             )
 
 
+@app.post("/api/analyze/all", status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute")
+async def analyze_all_regions(request: Request, payload: AnalyzeMultiRegionRequest, user: dict = Depends(get_current_user)):
+    """
+    Concurrent multi-region AWS cost audit.
+    Scans EC2, EBS, RDS, S3 across all selected regions in parallel using asyncio.gather.
+    Persists combined findings and AI synthesis to the database.
+    """
+    regions = [r.strip() for r in payload.regions if r.strip()]
+    if not regions:
+        regions = ["us-east-1", "us-east-2", "us-west-2", "eu-west-1"]
+
+    analysis_id = payload.analysis_id or str(uuid.uuid4())
+    user_org = get_user_org_id(user)
+    
+    session = None
+    if payload.account_id:
+        acc = database.get_cloud_account(payload.account_id, org_id=user_org)
+        if not acc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Cloud Account '{payload.account_id}' not found or access denied."
+            )
+        if acc.get("status") == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cloud Account access has expired on {acc.get('expires_at')}. Please refresh or renew permissions."
+            )
+        user_email = user.get("user", {}).get("email") or "finops-user"
+        import re
+        safe_session_name = re.sub(r'[^a-zA-Z0-9+=,.@-]', '-', user_email)[:64]
+        session = get_assumed_role_session(acc["role_arn"], acc["external_id"], session_name=safe_session_name)
+        database.update_cloud_account_last_scanned(payload.account_id)
+
+    await manager.broadcast(analysis_id, f"Initiating parallel multi-region scan across {len(regions)} regions ({', '.join(regions)})...")
+    
+    async def scan_single_region(reg: str):
+        try:
+            return await asyncio.to_thread(scan_all_resources, reg, session)
+        except Exception as scan_err:
+            logger.warning(f"Error scanning region {reg}: {scan_err}")
+            return []
+
+    # Run region scans concurrently
+    results = await asyncio.gather(*(scan_single_region(r) for r in regions))
+    all_resources = []
+    for res_list in results:
+        all_resources.extend(res_list)
+
+    await manager.broadcast(analysis_id, f"Scanned total {len(all_resources)} resources across {len(regions)} regions. Synthesizing AI findings...")
+    primary_region = regions[0]
+    analysis = await asyncio.to_thread(analyze_costs, all_resources, primary_region)
+
+    issues_found = len(analysis.get('recommendations', []))
+    total_savings = sum(item.get('estimated_savings', 0.0) for item in analysis.get('recommendations', []))
+    estimated_savings = f"${total_savings:.2f}"
+
+    try:
+        await db_client.create_analysis(analysis_id, f"Multi-Region ({len(regions)})", token=user["token"])
+        await db_client.update_analysis_success(
+            analysis_id=analysis_id,
+            resources_scanned=len(all_resources),
+            issues_found=issues_found,
+            estimated_savings=estimated_savings,
+            analysis_result=analysis,
+            token=user["token"]
+        )
+    except Exception as db_err:
+        logger.warning(f"InsForge multi-region update notice: {db_err}")
+
+    await manager.broadcast(analysis_id, "Multi-region analysis complete")
+    return {
+        "analysis_id": analysis_id,
+        "regions_scanned": regions,
+        "resources_scanned": len(all_resources),
+        "issues_found": issues_found,
+        "estimated_savings": estimated_savings,
+        "analysis": analysis
+    }
+
+
 class RemediateRequest(BaseModel):
     analysis_id: str = Field(..., description="The ID of the cost analysis record")
     resource_id: str = Field(..., description="The ID of the target resource to remediate")
@@ -612,14 +768,24 @@ async def remediate_resource(payload: RemediateRequest, user: dict = Depends(req
     """
     logger.info(f"Remediation request received for resource {payload.resource_id} under analysis {payload.analysis_id}")
     
+    user_org = get_user_org_id(user)
     session = None
     if payload.account_id:
-        acc = database.get_cloud_account(payload.account_id)
-        if acc:
-            user_email = user.get("user", {}).get("email") or "finops-user"
-            import re
-            safe_session_name = re.sub(r'[^a-zA-Z0-9+=,.@-]', '-', user_email)[:64]
-            session = get_assumed_role_session(acc["role_arn"], acc["external_id"], session_name=safe_session_name)
+        acc = database.get_cloud_account(payload.account_id, org_id=user_org)
+        if not acc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Cloud Account '{payload.account_id}' not found or access denied."
+            )
+        if acc.get("status") == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cloud Account access has expired on {acc.get('expires_at')}. Please refresh or renew permissions."
+            )
+        user_email = user.get("user", {}).get("email") or "finops-user"
+        import re
+        safe_session_name = re.sub(r'[^a-zA-Z0-9+=,.@-]', '-', user_email)[:64]
+        session = get_assumed_role_session(acc["role_arn"], acc["external_id"], session_name=safe_session_name)
 
     # 1. Execute the remediation via boto3 (run in threadpool to avoid blocking event loop)
     try:
@@ -683,19 +849,41 @@ async def remediate_resource(payload: RemediateRequest, user: dict = Depends(req
 # --- Phase 1: Multi-Tenant Cloud Accounts (STS AssumeRole) API ---
 # =====================================================================
 
+@app.get("/api/v1/credentials/status", status_code=status.HTTP_200_OK, tags=["Cloud Accounts"])
+async def get_saas_credential_status(user: dict = Depends(require_roles(["admin", "devops"]))):
+    """
+    Returns the health status of the SaaS-side AWS credentials used to call STS AssumeRole.
+
+    If credentials are temporary they will expire and cause InvalidClientTokenId errors.
+    Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY to a permanent IAM User key to fix this.
+    """
+    result = validate_saas_credentials()
+    http_status = status.HTTP_200_OK if result["ok"] else status.HTTP_503_SERVICE_UNAVAILABLE
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=http_status, content=result)
+
+
 @app.get("/api/v1/accounts/cfn-template", status_code=status.HTTP_200_OK, tags=["Cloud Accounts"])
-async def get_cfn_template(user: dict = Depends(get_current_user)):
+async def get_cfn_template(
+    mode: Literal["readonly", "remediation"] = "readonly",
+    duration_days: int | None = None,
+    user: dict = Depends(get_current_user)
+):
     """
     Generates a secure 1-Click AWS CloudFormation template and direct AWS Console link.
+    External ID is persisted per organization so reopening the modal retains the same token.
+    Supports mode='readonly' (Tier 1 Audit), mode='remediation' (Tier 2 Active Cleanup),
+    and duration_days for cryptographic AWS IAM DateLessThan time-limited access.
     """
-    external_id = f"ext_{uuid.uuid4().hex[:16]}"
+    user_org = get_user_org_id(user)
+    external_id = database.get_or_create_org_external_id(user_org)
     saas_account_id = os.environ.get("AWS_SAAS_ACCOUNT_ID", "123456789012")
     
-    cfn_yaml = generate_cloudformation_template(saas_account_id, external_id)
+    cfn_yaml = generate_cloudformation_template(saas_account_id, external_id, mode=mode, duration_days=duration_days)
     
-    # 1-Click AWS Console Quick Create URL
+    # 1-Click AWS Console Quick Create URL (template upload flow — more reliable than review)
     aws_quick_create_url = (
-        f"https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review"
+        f"https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/template"
         f"?stackName=CloudCostDetective-AuditIntegration"
         f"&param_SaaSAccountId={saas_account_id}"
         f"&param_ExternalId={external_id}"
@@ -705,13 +893,15 @@ async def get_cfn_template(user: dict = Depends(get_current_user)):
         "external_id": external_id,
         "saas_account_id": saas_account_id,
         "cfn_yaml": cfn_yaml,
-        "quick_create_url": aws_quick_create_url
+        "quick_create_url": aws_quick_create_url,
+        "mode": mode,
+        "duration_days": duration_days
     }
 
 @app.post("/api/v1/accounts/connect", status_code=status.HTTP_201_CREATED, tags=["Cloud Accounts"])
 async def connect_cloud_account(payload: ConnectAccountRequest, user: dict = Depends(require_roles(["admin"]))):
     """
-    Validates STS AssumeRole handshake and saves the connected AWS account (Admin only).
+    Validates STS AssumeRole handshake and saves the connected AWS account with optional expiration (Admin only).
     """
     account_id = f"acc_{uuid.uuid4().hex[:12]}"
     user_org = get_user_org_id(user)
@@ -726,6 +916,10 @@ async def connect_cloud_account(payload: ConnectAccountRequest, user: dict = Dep
     except Exception as e:
         logger.warning(f"Could not verify live STS connection ({e}). Proceeding in registered mode.")
 
+    expires_at = None
+    if payload.duration_days and payload.duration_days > 0:
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=payload.duration_days)).isoformat()
+
     saved_acc = database.save_cloud_account(
         account_id=account_id,
         org_id=user_org,
@@ -733,7 +927,8 @@ async def connect_cloud_account(payload: ConnectAccountRequest, user: dict = Dep
         aws_account_id=payload.aws_account_id,
         role_arn=payload.role_arn,
         external_id=payload.external_id,
-        regions=payload.regions
+        regions=payload.regions,
+        expires_at=expires_at
     )
     return saved_acc
 
@@ -766,9 +961,18 @@ async def apply_quarantine(payload: QuarantineApplyRequest, user: dict = Depends
     user_org = get_user_org_id(user)
     session = None
     if payload.account_id:
-        acc = database.get_cloud_account(payload.account_id)
-        if acc:
-            session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
+        acc = database.get_cloud_account(payload.account_id, org_id=user_org)
+        if not acc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Cloud Account '{payload.account_id}' not found or access denied."
+            )
+        if acc.get("status") == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cloud Account access has expired on {acc.get('expires_at')}. Please refresh permissions."
+            )
+        session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
 
     # Apply AWS tags
     try:
@@ -812,9 +1016,18 @@ async def dismiss_quarantine(payload: QuarantineActionRequest, user: dict = Depe
     user_org = get_user_org_id(user)
     session = None
     if payload.account_id:
-        acc = database.get_cloud_account(payload.account_id)
-        if acc:
-            session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
+        acc = database.get_cloud_account(payload.account_id, org_id=user_org)
+        if not acc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Cloud Account '{payload.account_id}' not found or access denied."
+            )
+        if acc.get("status") == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cloud Account access has expired on {acc.get('expires_at')}. Please refresh permissions."
+            )
+        session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
 
     if session:
         try:
@@ -833,13 +1046,23 @@ async def safe_delete_quarantined(payload: QuarantineActionRequest, user: dict =
     user_org = get_user_org_id(user)
     session = None
     if payload.account_id:
-        acc = database.get_cloud_account(payload.account_id)
-        if acc:
-            session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
+        acc = database.get_cloud_account(payload.account_id, org_id=user_org)
+        if not acc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Cloud Account '{payload.account_id}' not found or access denied."
+            )
+        if acc.get("status") == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cloud Account access has expired on {acc.get('expires_at')}. Please refresh permissions."
+            )
+        session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
 
     snapshot_id = None
     try:
-        res = await asyncio.to_thread(safe_delete_ebs_volume, session or boto3.Session(), payload.region, payload.resource_id)
+        active_session = session if session is not None else boto3.Session()
+        res = await asyncio.to_thread(safe_delete_ebs_volume, active_session, payload.region, payload.resource_id)
         snapshot_id = res.get("snapshot_id")
     except Exception as e:
         logger.error(f"Safe delete failed: {e}")
@@ -900,9 +1123,15 @@ class BudgetConfigRequest(BaseModel):
 
 
 async def run_scheduled_anomaly_scan():
-    """Daily scheduled background scan task."""
-    logger.info("Running daily scheduled cost anomaly scan...")
+    """Daily scheduled background scan task with distributed leader locking for multi-pod deployments."""
+    logger.info("Checking distributed lock for daily scheduled cost anomaly scan...")
+    acquired, lock_conn, db_type = database.acquire_advisory_lock(71705686)
+    if not acquired:
+        logger.info("Another replica pod is currently running the anomaly scan (lock active). Skipping.")
+        return
+
     try:
+        logger.info("Acquired scheduler lock. Running daily scheduled cost anomaly scan...")
         conn, db_type = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT user_id, threshold, slack_webhooks, emails FROM budget_configs")
@@ -962,6 +1191,8 @@ async def run_scheduled_anomaly_scan():
             logger.info(f"Scheduled alert successfully processed for user {user_id} on date {anomaly_date}")
     except Exception as e:
         logger.error(f"Error in run_scheduled_anomaly_scan: {str(e)}")
+    finally:
+        database.release_advisory_lock(lock_conn, db_type, 71705686)
 
 
 async def daily_anomaly_scanner_loop():
@@ -1036,13 +1267,29 @@ async def update_budgets(payload: BudgetConfigRequest, user: dict = Depends(get_
 
 
 @app.get("/api/budgets/spend", status_code=status.HTTP_200_OK)
-async def get_budgets_spend(region: str = "us-east-1", user: dict = Depends(get_current_user)):
+async def get_budgets_spend(region: str = "us-east-1", account_id: str | None = None, user: dict = Depends(get_current_user)):
     try:
         user_id = user["user"].get("id")
+        user_org = get_user_org_id(user)
         config = await db_client.get_budget(user_id, token=user["token"])
         threshold = config.get("threshold", 1000.0)
         
-        spend_res = anomaly_detector.fetch_daily_spend(region, threshold=threshold)
+        session = None
+        if account_id:
+            acc = database.get_cloud_account(account_id, org_id=user_org)
+            if not acc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Cloud Account '{account_id}' not found or access denied."
+                )
+            if acc.get("status") == "expired":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Cloud Account access has expired on {acc.get('expires_at')}. Please refresh permissions."
+                )
+            session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
+        
+        spend_res = anomaly_detector.fetch_daily_spend(region, threshold=threshold, session=session)
         daily_costs = spend_res["daily_costs"]
         is_simulated = spend_res["is_simulated"]
         anomalies = anomaly_detector.detect_cost_anomalies(daily_costs)
@@ -1056,6 +1303,8 @@ async def get_budgets_spend(region: str = "us-east-1", user: dict = Depends(get_
             "anomalies": anomalies_14,
             "is_simulated": is_simulated
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in budgets spend endpoint: {str(e)}")
         raise HTTPException(
@@ -1065,8 +1314,9 @@ async def get_budgets_spend(region: str = "us-east-1", user: dict = Depends(get_
 
 
 @app.post("/api/budgets/trigger-scan", status_code=status.HTTP_200_OK)
-async def trigger_budgets_scan(user: dict = Depends(get_current_user)):
+async def trigger_budgets_scan(account_id: str | None = None, user: dict = Depends(get_current_user)):
     user_id = user["user"].get("id")
+    user_org = get_user_org_id(user)
     region = "us-east-1"
     
     try:
@@ -1075,7 +1325,22 @@ async def trigger_budgets_scan(user: dict = Depends(get_current_user)):
         emails = config.get("emails", [])
         channels = emails
         
-        spend_res = anomaly_detector.fetch_daily_spend(region, threshold=threshold)
+        session = None
+        if account_id:
+            acc = database.get_cloud_account(account_id, org_id=user_org)
+            if not acc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Cloud Account '{account_id}' not found or access denied."
+                )
+            if acc.get("status") == "expired":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Cloud Account access has expired on {acc.get('expires_at')}. Please refresh permissions."
+                )
+            session = get_assumed_role_session(acc["role_arn"], acc["external_id"])
+        
+        spend_res = anomaly_detector.fetch_daily_spend(region, threshold=threshold, session=session)
         daily_costs = spend_res["daily_costs"]
         is_simulated = spend_res["is_simulated"]
         anomalies = anomaly_detector.detect_cost_anomalies(daily_costs)

@@ -63,3 +63,72 @@ def test_quarantine_api_endpoints(client):
     })
     assert dismiss_resp.status_code == 200
     assert dismiss_resp.json()["success"] is True
+
+def test_quarantine_and_remediate_account_validation(client):
+    # 1. Invalid account_id must return 404 Not Found
+    apply_resp = client.post("/api/v1/quarantine/apply", json={
+        "resource_id": "vol-orphan-99",
+        "resource_type": "EBS Volume",
+        "region": "us-east-1",
+        "reason": "Test",
+        "account_id": "acc_nonexistent_123"
+    })
+    assert apply_resp.status_code == 404
+    assert "not found" in apply_resp.json()["detail"].lower()
+
+    dismiss_resp = client.post("/api/v1/quarantine/dismiss", json={
+        "item_id": "quar_123",
+        "resource_id": "vol-orphan-99",
+        "region": "us-east-1",
+        "account_id": "acc_nonexistent_123"
+    })
+    assert dismiss_resp.status_code == 404
+
+    safe_del_resp = client.post("/api/v1/quarantine/safe-delete", json={
+        "item_id": "quar_123",
+        "resource_id": "vol-orphan-99",
+        "region": "us-east-1",
+        "account_id": "acc_nonexistent_123"
+    })
+    assert safe_del_resp.status_code == 404
+
+    remediate_resp = client.post("/api/remediate", json={
+        "analysis_id": "analysis_123",
+        "resource_id": "vol-orphan-99",
+        "issue_type": "Unattached EBS Volume",
+        "region": "us-east-1",
+        "account_id": "acc_nonexistent_123"
+    })
+    assert remediate_resp.status_code == 404
+
+    # 2. Expired account_id must return 403 Forbidden
+    from datetime import datetime, timezone, timedelta
+    past_date = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    database.save_cloud_account(
+        account_id="acc_quar_expired",
+        org_id="test-user-id",
+        account_alias="Expired Account",
+        aws_account_id="123456789012",
+        role_arn="arn:aws:iam::123456789012:role/AuditRole",
+        external_id="ext_test",
+        expires_at=past_date
+    )
+
+    apply_exp = client.post("/api/v1/quarantine/apply", json={
+        "resource_id": "vol-orphan-99",
+        "resource_type": "EBS Volume",
+        "region": "us-east-1",
+        "reason": "Test",
+        "account_id": "acc_quar_expired"
+    })
+    assert apply_exp.status_code == 403
+    assert "expired" in apply_exp.json()["detail"].lower()
+
+    remediate_exp = client.post("/api/remediate", json={
+        "analysis_id": "analysis_123",
+        "resource_id": "vol-orphan-99",
+        "issue_type": "Unattached EBS Volume",
+        "region": "us-east-1",
+        "account_id": "acc_quar_expired"
+    })
+    assert remediate_exp.status_code == 403

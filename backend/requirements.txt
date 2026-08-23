@@ -11,4 +11,6 @@ psycopg2-binary==2.9.9
 prometheus-fastapi-instrumentator==7.0.0
 python-json-logger==3.2.1
 slowapi==0.1.9
+packaging==24.2
+
 

@@ -37,6 +37,12 @@ services:
       - AWS_SECRET_ACCESS_KEY
       - AWS_SESSION_TOKEN
       - AWS_DEFAULT_REGION
+      - AWS_SAAS_ACCOUNT_ID
+      - GEMINI_API_KEY
+      - INSFORGE_PROJECT_URL
+      - INSFORGE_ANON_KEY
+      - API_SECRET_KEY
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-clouduser}:${POSTGRES_PASSWORD:-cloudpass}@postgres:5432/${POSTGRES_DB:-cloudcost}
       - DB_PATH=/app/data/db.sqlite3
       - ALLOWED_ORIGINS
@@ -53,8 +59,8 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
-        VITE_INSFORGE_PROJECT_URL: ${VITE_INSFORGE_PROJECT_URL:-https://scf29qqy.us-east.insforge.app}
-        VITE_INSFORGE_ANON_KEY: ${VITE_INSFORGE_ANON_KEY:-ik_fc877384331b6eaae45d762900f67d0c}
+        VITE_INSFORGE_PROJECT_URL: ${VITE_INSFORGE_PROJECT_URL}
+        VITE_INSFORGE_ANON_KEY: ${VITE_INSFORGE_ANON_KEY}
     ports:
       - "5173:8080"
     depends_on:
@@ -76,6 +82,17 @@ services:
     restart: unless-stopped
     cap_add:
       - IPC_LOCK
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloud_cost_tunnel
+    restart: unless-stopped
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      frontend:
+        condition: service_healthy
 
 volumes:
   postgres_data:

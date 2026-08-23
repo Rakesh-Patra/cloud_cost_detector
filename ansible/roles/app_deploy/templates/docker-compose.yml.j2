@@ -50,6 +50,19 @@ services:
     restart: {{ restart_policy }}
     cap_add:
       - IPC_LOCK
+{% if cloudflare_tunnel_token is defined and cloudflare_tunnel_token != "" %}
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloud_cost_tunnel
+    restart: {{ restart_policy }}
+    environment:
+      - TUNNEL_TOKEN={{ cloudflare_tunnel_token }}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      frontend:
+        condition: service_healthy
+{% endif %}
 
 volumes:
   backend_data:

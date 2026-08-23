@@ -167,6 +167,43 @@ docker compose up --build
 
 ---
 
+## 🔒 Production HTTPS with Cloudflare Tunnel (Zero-Port Exposure & Google OAuth)
+
+To allow **50+ remote/mobile users** to securely access your AWS EC2 instance without opening inbound ports (80/443/5173) to the public internet, and to enable Google OAuth PKCE authentication:
+
+### 1. Create a Free Cloudflare Tunnel
+1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/) and navigate to **Zero Trust** > **Networks** > **Tunnels**.
+2. Click **Create a Tunnel** > Select **Cloudflared**.
+3. Name your tunnel (e.g. `cloud-cost-detector`) and click **Save Tunnel**.
+4. In the **Install and run a connector** step, choose **Docker** and copy your **Tunnel Token** (the string after `--token`).
+
+### 2. Configure Public Hostname in Cloudflare
+In the Tunnel settings under the **Public Hostname** tab:
+* **Subdomain / Domain:** e.g., `cost.yourdomain.com`
+* **Service Type:** `HTTP`
+* **URL:** `frontend:8080` (or `localhost:5173` if running locally)
+
+### 3. Add Tunnel Token to Your Server
+Add the token to your `.env` file on your server / EC2:
+```env
+CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoi...your_token_here...
+```
+
+Start the platform:
+```bash
+docker compose up -d --build
+```
+The `cloudflared` container will connect to Cloudflare, and your app will instantly be available over encrypted HTTPS at `https://cost.yourdomain.com`.
+
+### 4. Authorize Google OAuth Redirect URI
+1. Open [Google Cloud Console](https://console.cloud.google.com/) > **APIs & Services** > **Credentials**.
+2. Select your **OAuth 2.0 Client ID**.
+3. Under **Authorized JavaScript origins**, add: `https://cost.yourdomain.com`
+4. Under **Authorized redirect URIs**, add: `https://cost.yourdomain.com`
+5. Open your [InsForge Dashboard](https://insforge.app) > **Authentication** > **Providers** > **Google**, and ensure `https://cost.yourdomain.com` is in the allowed redirect URLs.
+
+---
+
 ## 🌐 Accessing the Local Platform
 
 Once the containers start up, open your web browser to access the application:

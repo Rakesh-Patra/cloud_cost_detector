@@ -29,7 +29,12 @@ def get_connection():
     db_dir = os.path.dirname(current_db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
-    conn = sqlite3.connect(current_db_path)
+    conn = sqlite3.connect(current_db_path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+    except Exception:
+        pass
     return conn, "sqlite"
 
 def check_db_health() -> bool:
@@ -45,8 +50,45 @@ def check_db_health() -> bool:
         logger.error(f"Database health check failed: {e}")
         return False
 
+def acquire_advisory_lock(lock_id: int = 71705686):
+    """
+    Acquires a cluster-wide distributed advisory lock in PostgreSQL.
+    In multi-pod Kubernetes deployments, prevents duplicate background scheduler execution.
+    Returns: (acquired: bool, conn: Any, db_type: str)
+    """
+    try:
+        conn, db_type = get_connection()
+        if db_type == "postgres":
+            cursor = conn.cursor()
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", (lock_id,))
+            row = cursor.fetchone()
+            acquired = bool(row and row[0])
+            if not acquired:
+                conn.close()
+                return False, None, db_type
+            return True, conn, db_type
+        # In SQLite / single-node dev, proceed normally
+        return True, conn, db_type
+    except Exception as e:
+        logger.error(f"Error acquiring advisory lock {lock_id}: {e}")
+        return True, None, "error_fallback"
+
+def release_advisory_lock(conn, db_type: str, lock_id: int = 71705686):
+    """Releases a cluster-wide distributed advisory lock in PostgreSQL."""
+    if not conn:
+        return
+    try:
+        if db_type == "postgres":
+            cursor = conn.cursor()
+            cursor.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
+            conn.close()
+        elif db_type == "sqlite":
+            conn.close()
+    except Exception as e:
+        logger.error(f"Error releasing advisory lock {lock_id}: {e}")
+
 def init_db():
-    """Initialize tables for budget configurations and alert logs."""
+    """Initialize tables for budget configurations, org settings, cloud accounts, and alert logs."""
     try:
         conn, db_type = get_connection()
         cursor = conn.cursor()
@@ -60,6 +102,14 @@ def init_db():
             );
             """)
             cursor.execute("""
+            CREATE TABLE IF NOT EXISTS org_settings (
+                org_id VARCHAR(255) PRIMARY KEY,
+                external_id VARCHAR(255) NOT NULL,
+                created_at VARCHAR(255),
+                updated_at VARCHAR(255)
+            );
+            """)
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS cloud_accounts (
                 id VARCHAR(255) PRIMARY KEY,
                 org_id VARCHAR(255) NOT NULL,
@@ -70,9 +120,14 @@ def init_db():
                 status VARCHAR(50) DEFAULT 'active',
                 regions TEXT,
                 created_at VARCHAR(255),
-                last_scanned_at VARCHAR(255)
+                last_scanned_at VARCHAR(255),
+                expires_at VARCHAR(255)
             );
             """)
+            try:
+                cursor.execute("ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS expires_at VARCHAR(255);")
+            except Exception:
+                pass
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS quarantine_items (
                 id VARCHAR(255) PRIMARY KEY,
@@ -117,6 +172,14 @@ def init_db():
             )
             """)
             cursor.execute("""
+            CREATE TABLE IF NOT EXISTS org_settings (
+                org_id TEXT PRIMARY KEY,
+                external_id TEXT NOT NULL,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """)
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS cloud_accounts (
                 id TEXT PRIMARY KEY,
                 org_id TEXT NOT NULL,
@@ -127,9 +190,14 @@ def init_db():
                 status TEXT DEFAULT 'active',
                 regions TEXT,
                 created_at TEXT,
-                last_scanned_at TEXT
+                last_scanned_at TEXT,
+                expires_at TEXT
             )
             """)
+            try:
+                cursor.execute("ALTER TABLE cloud_accounts ADD COLUMN expires_at TEXT;")
+            except Exception:
+                pass
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS quarantine_items (
                 id TEXT PRIMARY KEY,
@@ -172,6 +240,46 @@ def init_db():
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
 
+def get_or_create_org_external_id(org_id: str) -> str:
+    """Retrieve or generate a permanent high-entropy (256-bit) External ID for an organization."""
+    try:
+        import secrets
+        conn, db_type = get_connection()
+        cursor = conn.cursor()
+        param_placeholder = "%s" if db_type == "postgres" else "?"
+        cursor.execute(f"SELECT external_id FROM org_settings WHERE org_id = {param_placeholder}", (org_id,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            conn.close()
+            return row[0]
+        
+        # Generate 256-bit cryptographically secure token
+        new_ext_id = f"ext_{secrets.token_hex(32)}"
+        now_str = datetime.now(timezone.utc).isoformat()
+        
+        if db_type == "postgres":
+            query = """
+            INSERT INTO org_settings (org_id, external_id, created_at, updated_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (org_id) DO UPDATE SET updated_at = EXCLUDED.updated_at
+            """
+            cursor.execute(query, (org_id, new_ext_id, now_str, now_str))
+        else:
+            query = """
+            INSERT INTO org_settings (org_id, external_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (org_id) DO UPDATE SET updated_at = excluded.updated_at
+            """
+            cursor.execute(query, (org_id, new_ext_id, now_str, now_str))
+            
+        conn.commit()
+        conn.close()
+        return new_ext_id
+    except Exception as e:
+        logger.error(f"Error getting or creating external_id for org {org_id}: {e}")
+        import secrets
+        return f"ext_{secrets.token_hex(32)}"
+
 def get_budget_config(user_id: str) -> dict:
     """Retrieve budget and alert configurations for a user."""
     try:
@@ -201,35 +309,35 @@ def get_budget_config(user_id: str) -> dict:
     }
 
 def save_budget_config(user_id: str, threshold: float, slack_webhooks: list, emails: list):
-    """Save or update budget and alert configurations for a user."""
+    """Save or update budget and alert notification channels for a user."""
     try:
         conn, db_type = get_connection()
         cursor = conn.cursor()
         now_str = datetime.now(timezone.utc).isoformat()
+        param_placeholder = "%s" if db_type == "postgres" else "?"
         
         if db_type == "postgres":
             query = """
             INSERT INTO budget_configs (user_id, threshold, slack_webhooks, emails, updated_at)
             VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT(user_id) DO UPDATE SET
+            ON CONFLICT (user_id) DO UPDATE SET
                 threshold = EXCLUDED.threshold,
                 slack_webhooks = EXCLUDED.slack_webhooks,
                 emails = EXCLUDED.emails,
                 updated_at = EXCLUDED.updated_at
             """
-            cursor.execute(query, (user_id, threshold, json.dumps(slack_webhooks), json.dumps(emails), now_str))
         else:
             query = """
             INSERT INTO budget_configs (user_id, threshold, slack_webhooks, emails, updated_at)
             VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
+            ON CONFLICT (user_id) DO UPDATE SET
                 threshold = excluded.threshold,
                 slack_webhooks = excluded.slack_webhooks,
                 emails = excluded.emails,
                 updated_at = excluded.updated_at
             """
-            cursor.execute(query, (user_id, threshold, json.dumps(slack_webhooks), json.dumps(emails), now_str))
             
+        cursor.execute(query, (user_id, threshold, json.dumps(slack_webhooks), json.dumps(emails), now_str))
         conn.commit()
         conn.close()
         logger.info(f"Saved budget config for user {user_id}")
@@ -287,8 +395,8 @@ def save_alert_log(user_id: str, alert_id: str, date: str, details: dict, status
 
 # --- Multi-Tenant Cloud Accounts Management ---
 
-def save_cloud_account(account_id: str, org_id: str, account_alias: str, aws_account_id: str, role_arn: str, external_id: str, regions: list = None, status: str = "active") -> dict:
-    """Save or update a connected AWS Cloud Account with its STS AssumeRole ARN and External ID."""
+def save_cloud_account(account_id: str, org_id: str, account_alias: str, aws_account_id: str, role_arn: str, external_id: str, regions: list = None, status: str = "active", expires_at: str = None) -> dict:
+    """Save or update a connected AWS Cloud Account with its STS AssumeRole ARN, External ID, and optional expiration."""
     try:
         conn, db_type = get_connection()
         cursor = conn.cursor()
@@ -297,30 +405,32 @@ def save_cloud_account(account_id: str, org_id: str, account_alias: str, aws_acc
 
         if db_type == "postgres":
             query = """
-            INSERT INTO cloud_accounts (id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)
+            INSERT INTO cloud_accounts (id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at, expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s)
             ON CONFLICT(id) DO UPDATE SET
                 account_alias = EXCLUDED.account_alias,
                 aws_account_id = EXCLUDED.aws_account_id,
                 role_arn = EXCLUDED.role_arn,
                 external_id = EXCLUDED.external_id,
                 status = EXCLUDED.status,
-                regions = EXCLUDED.regions
+                regions = EXCLUDED.regions,
+                expires_at = EXCLUDED.expires_at
             """
-            cursor.execute(query, (account_id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions_json, now_str))
+            cursor.execute(query, (account_id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions_json, now_str, expires_at))
         else:
             query = """
-            INSERT INTO cloud_accounts (id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            INSERT INTO cloud_accounts (id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
             ON CONFLICT(id) DO UPDATE SET
                 account_alias = excluded.account_alias,
                 aws_account_id = excluded.aws_account_id,
                 role_arn = excluded.role_arn,
                 external_id = excluded.external_id,
                 status = excluded.status,
-                regions = excluded.regions
+                regions = excluded.regions,
+                expires_at = excluded.expires_at
             """
-            cursor.execute(query, (account_id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions_json, now_str))
+            cursor.execute(query, (account_id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions_json, now_str, expires_at))
 
         conn.commit()
         conn.close()
@@ -333,27 +443,34 @@ def save_cloud_account(account_id: str, org_id: str, account_alias: str, aws_acc
             "external_id": external_id,
             "status": status,
             "regions": json.loads(regions_json),
-            "created_at": now_str
+            "created_at": now_str,
+            "expires_at": expires_at
         }
     except Exception as e:
         logger.error(f"Error saving cloud account {account_id}: {e}")
         raise e
 
 def list_cloud_accounts(org_id: str = "default_org") -> list:
-    """Retrieve all connected cloud accounts for an organization."""
+    """Retrieve all connected cloud accounts for an organization or user."""
     try:
         conn, db_type = get_connection()
         cursor = conn.cursor()
         param_placeholder = "%s" if db_type == "postgres" else "?"
         cursor.execute(
-            f"SELECT id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at FROM cloud_accounts WHERE org_id = {param_placeholder} ORDER BY created_at DESC",
+            f"SELECT id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at, expires_at FROM cloud_accounts WHERE org_id = {param_placeholder} ORDER BY created_at DESC",
             (org_id,)
         )
         rows = cursor.fetchall()
         conn.close()
 
+        now_iso = datetime.now(timezone.utc).isoformat()
         accounts = []
         for r in rows:
+            acc_status = r[6]
+            expires_at = r[10] if len(r) > 10 else None
+            if expires_at and now_iso > expires_at:
+                acc_status = "expired"
+
             accounts.append({
                 "id": r[0],
                 "org_id": r[1],
@@ -361,10 +478,11 @@ def list_cloud_accounts(org_id: str = "default_org") -> list:
                 "aws_account_id": r[3],
                 "role_arn": r[4],
                 "external_id": r[5],
-                "status": r[6],
+                "status": acc_status,
                 "regions": json.loads(r[7]) if r[7] else [],
                 "created_at": r[8],
-                "last_scanned_at": r[9]
+                "last_scanned_at": r[9],
+                "expires_at": expires_at
             })
         return accounts
     except Exception as e:
@@ -379,17 +497,23 @@ def get_cloud_account(account_id: str, org_id: str = None) -> dict | None:
         param_placeholder = "%s" if db_type == "postgres" else "?"
         if org_id:
             cursor.execute(
-                f"SELECT id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at FROM cloud_accounts WHERE id = {param_placeholder} AND org_id = {param_placeholder}",
+                f"SELECT id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at, expires_at FROM cloud_accounts WHERE id = {param_placeholder} AND org_id = {param_placeholder}",
                 (account_id, org_id)
             )
         else:
             cursor.execute(
-                f"SELECT id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at FROM cloud_accounts WHERE id = {param_placeholder}",
+                f"SELECT id, org_id, account_alias, aws_account_id, role_arn, external_id, status, regions, created_at, last_scanned_at, expires_at FROM cloud_accounts WHERE id = {param_placeholder}",
                 (account_id,)
             )
         r = cursor.fetchone()
         conn.close()
         if r:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            acc_status = r[6]
+            expires_at = r[10] if len(r) > 10 else None
+            if expires_at and now_iso > expires_at:
+                acc_status = "expired"
+
             return {
                 "id": r[0],
                 "org_id": r[1],
@@ -397,10 +521,11 @@ def get_cloud_account(account_id: str, org_id: str = None) -> dict | None:
                 "aws_account_id": r[3],
                 "role_arn": r[4],
                 "external_id": r[5],
-                "status": r[6],
+                "status": acc_status,
                 "regions": json.loads(r[7]) if r[7] else [],
                 "created_at": r[8],
-                "last_scanned_at": r[9]
+                "last_scanned_at": r[9],
+                "expires_at": expires_at
             }
         return None
     except Exception as e:

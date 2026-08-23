@@ -47,21 +47,28 @@ export const ConnectCloudModal: React.FC<ConnectCloudModalProps> = ({
     }
   };
 
+  const [mode, setMode] = useState<'readonly' | 'remediation'>('readonly');
+  const [durationDays, setDurationDays] = useState<number | null>(null);
+
+  const loadTemplate = (selectedMode: 'readonly' | 'remediation', selectedDuration: number | null) => {
+    setLoadingTemplate(true);
+    setError(null);
+    getCfnTemplate(selectedMode, selectedDuration)
+      .then((data) => {
+        setCfnData(data);
+        setLoadingTemplate(false);
+      })
+      .catch((err) => {
+        setError(err.message || 'Failed to generate onboarding CloudFormation template');
+        setLoadingTemplate(false);
+      });
+  };
+
   useEffect(() => {
     if (isOpen) {
-      setLoadingTemplate(true);
-      setError(null);
-      getCfnTemplate()
-        .then((data) => {
-          setCfnData(data);
-          setLoadingTemplate(false);
-        })
-        .catch((err) => {
-          setError(err.message || 'Failed to generate onboarding CloudFormation template');
-          setLoadingTemplate(false);
-        });
+      loadTemplate(mode, durationDays);
     }
-  }, [isOpen]);
+  }, [isOpen, mode, durationDays]);
 
   if (!isOpen) return null;
 
@@ -83,6 +90,7 @@ export const ConnectCloudModal: React.FC<ConnectCloudModalProps> = ({
         role_arn: roleArn.trim(),
         external_id: cfnData.external_id,
         regions: ['us-east-1', 'us-east-2', 'us-west-2', 'eu-west-1'],
+        duration_days: durationDays,
       });
       window.dispatchEvent(new Event('cloud-accounts-updated'));
       onAccountConnected(newAccount);
@@ -118,7 +126,70 @@ export const ConnectCloudModal: React.FC<ConnectCloudModalProps> = ({
         <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-3.5 mb-6 flex items-start space-x-3 text-xs text-emerald-200">
           <span className="text-base">🛡️</span>
           <div>
-            <span className="font-semibold text-emerald-300">Read-Only Security Guarantee:</span> Our SaaS uses AWS STS with your dedicated External ID. We never see or store root AWS secret keys and have zero access to your underlying application data.
+            <span className="font-semibold text-emerald-300">Security Guarantee:</span>{' '}
+            Our SaaS uses AWS STS with your dedicated External ID. We never store root AWS secret keys
+            and have zero access to your application data.{' '}
+            <span className="text-emerald-400 font-medium">
+              {durationDays
+                ? `Cryptographically expires after ${durationDays} days via AWS DateLessThan condition.`
+                : 'Role connection remains active permanently until deleted in your AWS Console.'}
+            </span>
+          </div>
+        </div>
+
+        {/* Permission Mode & Duration Selectors */}
+        <div className="space-y-2.5 mb-4">
+          <div className="bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex items-center gap-1.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setMode('readonly')}
+              className={`flex-1 py-2 px-3 rounded-lg font-medium transition flex items-center justify-center gap-1.5 ${
+                mode === 'readonly'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span>🔍 Tier 1: Read-Only Audit</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('remediation')}
+              className={`flex-1 py-2 px-3 rounded-lg font-medium transition flex items-center justify-center gap-1.5 ${
+                mode === 'remediation'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span>⚡ Tier 2: Active Auto-Remediation</span>
+            </button>
+          </div>
+
+          {/* Time-Limited Access Grant Selector */}
+          <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800 flex items-center justify-between gap-2 text-xs">
+            <span className="text-slate-400 font-medium flex items-center gap-1.5 pl-1">
+              ⏳ Access Grant Window:
+            </span>
+            <div className="flex items-center gap-1">
+              {[
+                { label: '♾️ Permanent', value: null },
+                { label: '7 Days (POC)', value: 7 },
+                { label: '30 Days (Audit)', value: 30 },
+                { label: '90 Days (Quarterly)', value: 90 },
+              ].map((opt) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={() => setDurationDays(opt.value)}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition ${
+                    durationDays === opt.value
+                      ? 'bg-slate-700 text-purple-300 border border-purple-500/50 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -129,16 +200,18 @@ export const ConnectCloudModal: React.FC<ConnectCloudModalProps> = ({
           </div>
         ) : (
           <div>
-            {/* Step 1: Deploy Read-Only IAM Role */}
+            {/* Step 1: Deploy IAM Role */}
             <div className="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 mb-5 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold text-white flex items-center gap-1.5">
                     <FileCode className="w-4 h-4 text-purple-400" />
-                    Step 1: Deploy Read-Only IAM Role in AWS
+                    Step 1: Deploy {mode === 'remediation' ? 'Active Remediation' : 'Read-Only'} IAM Role in AWS
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Download the pre-configured CloudFormation template, upload it in AWS CloudFormation, and grab the Role ARN.
+                    {mode === 'remediation'
+                      ? 'Grants SecurityAudit + scoped actions to quarantine/stop/snapshot idle resources.'
+                      : 'Grants zero write access. Read-only SecurityAudit + CloudWatch and Cost Explorer metrics.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
@@ -194,8 +267,19 @@ export const ConnectCloudModal: React.FC<ConnectCloudModalProps> = ({
               <h3 className="text-sm font-semibold text-white">Step 2: Enter Role ARN & Account Details</h3>
 
               {error && (
-                <div className="bg-rose-950/50 border border-rose-500/40 text-rose-300 text-xs p-3 rounded-lg">
-                  {error}
+                <div className="bg-rose-950/50 border border-rose-500/40 text-rose-300 text-xs p-3 rounded-lg space-y-1">
+                  <p>{error}</p>
+                  {(error.toLowerCase().includes('invalidclienttokenid') ||
+                    error.toLowerCase().includes('security token') ||
+                    error.toLowerCase().includes('sts') ||
+                    error.toLowerCase().includes('expired')) && (
+                    <p className="text-amber-300 font-medium mt-1">
+                      💡 This is a <strong>server-side</strong> credential issue, not a problem with your Role ARN.
+                      Ask your admin to set permanent <code>AWS_ACCESS_KEY_ID</code> +{' '}
+                      <code>AWS_SECRET_ACCESS_KEY</code> (IAM User keys) in the backend{' '}
+                      <code>.env</code> file and restart the server.
+                    </p>
+                  )}
                 </div>
               )}
 
