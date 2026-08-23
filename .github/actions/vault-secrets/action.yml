@@ -105,7 +105,6 @@ runs:
         action: 'authorize'
 
     - name: Fetch Secrets from Vault
-      continue-on-error: true
       uses: hashicorp/vault-action@v3
       with:
         url: ${{ inputs.vault-url }}
