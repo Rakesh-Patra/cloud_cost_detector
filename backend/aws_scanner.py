@@ -77,7 +77,8 @@ def _get_saas_sts_client():
     """
     access_key = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
     secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
-    region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1").strip()
+    from botocore.config import Config
+    sts_config = Config(connect_timeout=4, read_timeout=4, retries={'max_attempts': 2})
 
     if not access_key or not secret_key:
         logger.warning(
@@ -86,7 +87,7 @@ def _get_saas_sts_client():
             "credentials they will expire and cause InvalidClientTokenId errors."
         )
         # Fall back so existing deployments that use instance profiles still work.
-        return boto3.client("sts", region_name=region)
+        return boto3.client("sts", region_name=region, config=sts_config)
 
     # Explicit permanent credentials — never expire on their own.
     return boto3.client(
@@ -94,6 +95,7 @@ def _get_saas_sts_client():
         region_name=region,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
+        config=sts_config,
         # No aws_session_token → this is a permanent IAM User key, not a temp token.
     )
 
