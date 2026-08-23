@@ -37,6 +37,7 @@ services:
       - "{{ frontend_port }}:8080"
     volumes:
       - /opt/cloud_cost_detector/ssl:/etc/nginx/ssl:ro
+      - /var/www/certbot:/var/www/certbot:ro
     depends_on:
       backend:
         condition: service_healthy
