@@ -21,19 +21,14 @@ export default function ProgressTracker({ progressLogs, isError, region }: Progr
       const keyword = steps[stepIndex].key;
       return progressLogs.some(log => {
         const logLower = log.toLowerCase();
-        if (keyword === 'init') return logLower.includes('init') || logLower.includes('client');
-        if (keyword === 'scan') return logLower.includes('scan') || logLower.includes('ec2') || logLower.includes('ebs');
-        if (keyword === 'gemini') return logLower.includes('gemini') || logLower.includes('generat');
-        if (keyword === 'persist') return logLower.includes('persist') || logLower.includes('insforge');
-        if (keyword === 'complete') return logLower.includes('complete');
+        if (keyword === 'init') return logLower.includes('init') || logLower.includes('client') || logLower.includes('connecting') || logLower.includes('sts');
+        if (keyword === 'scan') return logLower.includes('scan') || logLower.includes('ec2') || logLower.includes('ebs') || logLower.includes('rds') || logLower.includes('s3') || logLower.includes('telemetry');
+        if (keyword === 'gemini') return logLower.includes('gemini') || logLower.includes('generat') || logLower.includes('pricing') || logLower.includes('synthesis') || logLower.includes('ai');
+        if (keyword === 'persist') return logLower.includes('persist') || logLower.includes('insforge') || logLower.includes('metric') || logLower.includes('audit');
+        if (keyword === 'complete') return logLower.includes('complete') || logLower.includes('success');
         return false;
       });
     };
-
-    const stepSeen = isStepInLogs(index);
-    if (!stepSeen) {
-      return 'pending';
-    }
 
     // Check if any subsequent steps have already been initialized
     const laterStepSeen = Array.from({ length: steps.length - index - 1 }, (_, i) => index + i + 1)
@@ -43,13 +38,18 @@ export default function ProgressTracker({ progressLogs, isError, region }: Progr
       return 'completed';
     }
 
+    const stepSeen = isStepInLogs(index);
+    if (!stepSeen) {
+      return 'pending';
+    }
+
     // If it's the current active step and there's a failure flag
     if (isError) {
       return 'failed';
     }
 
     // Special case for complete step
-    if (index === 4 && progressLogs.some(log => log.toLowerCase().includes('complete'))) {
+    if (index === steps.length - 1 && isStepInLogs(index)) {
       return 'completed';
     }
 
