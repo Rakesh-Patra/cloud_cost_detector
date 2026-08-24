@@ -1,0 +1,25 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloud-cost-backend-pdb
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cloud-cost-backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloud-cost-frontend-pdb
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cloud-cost-frontend

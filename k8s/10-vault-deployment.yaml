@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-cost-vault
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-vault
+    app.kubernetes.io/version: "1.15.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloud-cost-vault
+  template:
+    metadata:
+      labels:
+        app: cloud-cost-vault
+        app.kubernetes.io/name: cloud-cost-vault
+        app.kubernetes.io/version: "1.15.0"
+        environment: "production"
+    spec:
+      securityContext:
+        fsGroup: 100
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.15.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - vault
+            - server
+            - -config=/vault/config/vault.hcl
+          ports:
+            - containerPort: 8200
+              name: vault-port
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+                - IPC_LOCK
+          volumeMounts:
+            - name: vault-storage
+              mountPath: /vault/file
+            - name: vault-config
+              mountPath: /vault/config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true
+              port: 8200
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true&uninitcode=200
+              port: 8200
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: vault-storage
+          persistentVolumeClaim:
+            claimName: cloud-cost-vault-pvc
+        - name: vault-config
+          configMap:
+            name: cloud-cost-vault-config

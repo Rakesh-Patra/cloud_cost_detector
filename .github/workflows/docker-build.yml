@@ -23,20 +23,17 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Build Backend Image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          file: ./backend/dockerfile
+          file: ./backend/Dockerfile
           push: false
           tags: backend:${{ inputs.image-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
       - name: Build Frontend Image
         uses: docker/build-push-action@v5
         with:

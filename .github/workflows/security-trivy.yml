@@ -12,7 +12,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Run Trivy FS Scan
         uses: aquasecurity/trivy-action@master
         with:

@@ -1,0 +1,12 @@
+# markdownlint-cli2 configuration
+
+ignores:
+  - "node_modules/**"
+  - "**/node_modules/**"
+  - "actionlint_bin/**"
+
+config:
+  MD013: false  # Line length rule disabled for documentation flexibility
+  MD033: false  # Inline HTML allowed for layout alignments, badges, and figures
+  MD036: false  # Allow bold/emphasis text labels in issue templates
+  MD041: false  # Allow templates/files to start with frontmatter or H2 headings

@@ -29,7 +29,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Create Git Tag and GitHub Release
         uses: actions/github-script@v7
         with:
@@ -39,9 +38,7 @@ jobs:
             const date = new Date().toISOString().slice(0,10).replace(/-/g,".");
             const runNumber = context.runNumber;
             const tagName = `v${date}-${runNumber}`;
-            
             console.log(`Creating release tag: ${tagName}`);
-            
             // Create reference tag
             try {
               await github.rest.git.createRef({
@@ -50,7 +47,6 @@ jobs:
                 ref: `refs/tags/${tagName}`,
                 sha: context.sha
               });
-              
               // Create Release
               await github.rest.repos.createRelease({
                 owner: context.repo.owner,

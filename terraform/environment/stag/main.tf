@@ -4,7 +4,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/*amd64*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 
   filter {
@@ -16,8 +16,13 @@ data "aws_ami" "ubuntu" {
 module "ec2" {
   source = "../../modules/ec2"
 
-  environment   = var.environment
-  instance_type = var.instance_type
-  ami           = data.aws_ami.ubuntu.id
-  key_name      = var.key_name
+  environment                  = var.environment
+  instance_type                = var.instance_type
+  ami                          = data.aws_ami.ubuntu.id
+  key_name                     = var.key_name
+  allowed_ssh_cidr_blocks      = var.allowed_ssh_cidr_blocks
+  allowed_vault_cidr_blocks    = var.allowed_vault_cidr_blocks
+  allowed_backend_cidr_blocks  = var.allowed_backend_cidr_blocks
+  allowed_frontend_cidr_blocks = var.allowed_frontend_cidr_blocks
+  create_iam_role              = var.create_iam_role
 }

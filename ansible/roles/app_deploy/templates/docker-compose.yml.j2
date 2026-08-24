@@ -5,14 +5,20 @@ services:
   backend:
     image: {{ backend_image }}
     container_name: cloud_cost_backend
+    networks:
+      default:
+        aliases:
+          - cloud-cost-backend-service
+          - backend
     ports:
       - "{{ backend_port }}:8000"
     env_file:
       - .env
     environment:
       - AWS_DEFAULT_REGION=us-east-1
+      - DB_PATH=/app/data/db.sqlite3
     volumes:
-      - backend_data:/app/db.sqlite3
+      - backend_data:/app/data
       - /home/{{ ansible_user }}/.aws:/home/nonroot/.aws:ro
     restart: {{ restart_policy }}
     healthcheck:
@@ -26,7 +32,12 @@ services:
     image: {{ frontend_image }}
     container_name: cloud_cost_frontend
     ports:
+      - "80:8080"
+      - "443:8443"
       - "{{ frontend_port }}:8080"
+    volumes:
+      - /opt/cloud_cost_detector/ssl:/etc/nginx/ssl:ro
+      - /var/www/certbot:/var/www/certbot:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -37,6 +48,34 @@ services:
       timeout: 10s
       retries: 3
 
+  vault:
+    image: hashicorp/vault:1.15.0
+    container_name: cloud_cost_vault
+    ports:
+      - "8200:8200"
+    volumes:
+      - {{ app_dir }}/vault/config:/vault/config
+      - vault_data:/vault/file
+    entrypoint: vault server -config=/vault/config/vault-config.hcl
+    restart: {{ restart_policy }}
+    cap_add:
+      - IPC_LOCK
+{% if cloudflare_tunnel_token is defined and cloudflare_tunnel_token != "" %}
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloud_cost_tunnel
+    restart: {{ restart_policy }}
+    environment:
+      - TUNNEL_TOKEN={{ cloudflare_tunnel_token }}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      frontend:
+        condition: service_healthy
+{% endif %}
+
 volumes:
   backend_data:
+    driver: local
+  vault_data:
     driver: local

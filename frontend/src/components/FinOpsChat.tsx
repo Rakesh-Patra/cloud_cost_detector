@@ -63,9 +63,9 @@ export default function FinOpsChat() {
       };
     }
 
-    // 2. Fallback to localStorage (Dashboard or when navigated without state)
+    // 2. Fallback to sessionStorage (scoped to current browser session only)
     try {
-      const saved = localStorage.getItem('latestScanResult');
+      const saved = sessionStorage.getItem('latestScanResult');
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
@@ -74,7 +74,7 @@ export default function FinOpsChat() {
         };
       }
     } catch (e) {
-      console.error('Failed to parse latestScanResult from localStorage:', e);
+      console.error('Failed to parse latestScanResult from sessionStorage:', e);
     }
 
     return { resources: [], recommendations: [] };
@@ -94,14 +94,14 @@ export default function FinOpsChat() {
 
     try {
       const { resources, recommendations } = getContextData();
-      const token = (insforge as any).tokenManager.getAccessToken();
+      const token = (insforge as any).tokenManager.getAccessToken() || 'local-dev-token';
       
       const headers = {
         'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        'Authorization': `Bearer ${token}`,
       };
 
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
       
       // Exclude the initial welcome message from the backend payload if it's the only model message,
       // but otherwise send full history so Gemini has the proper conversational context.
@@ -123,7 +123,10 @@ export default function FinOpsChat() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Chat request failed' }));
-        throw new Error(errorData.detail?.message || errorData.detail || 'Failed to get response');
+        const detailMsg = typeof errorData.detail === 'string'
+          ? errorData.detail
+          : errorData.detail?.message || errorData.message || (typeof errorData.detail === 'object' ? JSON.stringify(errorData.detail) : 'Chat request failed');
+        throw new Error(detailMsg);
       }
 
       const data = await response.json();

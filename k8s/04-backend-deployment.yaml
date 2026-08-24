@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-cost-backend
+  namespace: cloud-cost
+  labels:
+    app.kubernetes.io/name: cloud-cost-backend
+    app.kubernetes.io/part-of: cloud-cost-system
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: "helm"
+    environment: "production"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: cloud-cost-backend
+  template:
+    metadata:
+      labels:
+        app: cloud-cost-backend
+        app.kubernetes.io/name: cloud-cost-backend
+        app.kubernetes.io/version: "2.0.0"
+        environment: "production"
+    spec:
+      securityContext:
+        fsGroup: 65532
+      containers:
+        - name: backend
+          image: ghcr.io/cloud-cost/cloud-cost-backend:2.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: data-volume
+              mountPath: /app/data
+          envFrom:
+            - configMapRef:
+                name: cloud-cost-config
+            - secretRef:
+                name: cloud-cost-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: cloud-cost-backend-pvc

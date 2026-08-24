@@ -136,6 +136,42 @@ def setup():
     except Exception as e:
         print(f"Failed to create Vault policy: {e}")
 
+    # Seed default secrets into local Vault dynamically from environment or .env file
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    insforge_url = os.getenv("INSFORGE_PROJECT_URL", "")
+    insforge_key = os.getenv("INSFORGE_ANON_KEY", "")
+
+    # Try loading from backend/.env if environment variables are not set
+    env_file = os.path.join(os.getcwd(), "backend", ".env")
+    if os.path.exists(env_file):
+        with open(env_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("GEMINI_API_KEY=") and not gemini_key:
+                    gemini_key = line.split("=", 1)[1].strip()
+                elif line.startswith("INSFORGE_PROJECT_URL=") and not insforge_url:
+                    insforge_url = line.split("=", 1)[1].strip()
+                elif line.startswith("INSFORGE_ANON_KEY=") and not insforge_key:
+                    insforge_key = line.split("=", 1)[1].strip()
+
+    if gemini_key or insforge_url or insforge_key:
+        app_secret_url = f"{VAULT_ADDR}/v1/secret/data/cloud_cost/app"
+        app_secret_data = json.dumps({
+            "data": {
+                "gemini_api_key": gemini_key,
+                "insforge_project_url": insforge_url,
+                "insforge_anon_key": insforge_key
+            }
+        }).encode('utf-8')
+        req = urllib.request.Request(app_secret_url, data=app_secret_data, method="POST")
+        req.add_header("X-Vault-Token", VAULT_TOKEN)
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req) as response:
+                print("Seeded app secrets into 'secret/data/cloud_cost/app' from environment.")
+        except Exception as e:
+            print(f"Note on seeding app secrets: {e}")
+
     print("\nVault setup complete! Vault is running locally at http://127.0.0.1:8200 with token 'root'.")
     print("OIDC authentication role 'github-actions-role' has been configured.")
     print("Vault UI is accessible at http://127.0.0.1:8200/ui using Token method (token: 'root').")
