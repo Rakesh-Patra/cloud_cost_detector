@@ -109,23 +109,23 @@ export default function Budgets() {
   const dailyThreshold = config.threshold > 0 ? config.threshold / 30 : undefined;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-3.5 sm:p-5 md:p-6 max-w-6xl mx-auto space-y-4 sm:space-y-6">
 
       {error && <ErrorBanner message={error} />}
 
       {isSimulated && (
-        <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-500/8 border border-amber-500/20">
+        <div className="flex items-start gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-lg bg-amber-500/8 border border-amber-500/20">
           <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div>
             <p className="text-xs font-semibold text-amber-400">Simulated Spend Data</p>
-            <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
+            <p className="text-[11px] sm:text-xs text-zinc-500 mt-0.5 leading-relaxed">
               AWS Cost Explorer is preparing data (up to 24 hours). Charts and alerts are running on high-fidelity simulated data scaled to your monthly cap.
             </p>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
 
         {/* Budget Config Form */}
         <div className="lg:col-span-2">

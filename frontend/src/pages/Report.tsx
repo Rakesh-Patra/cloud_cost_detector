@@ -164,7 +164,7 @@ export default function Report() {
   ];
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
+    <div className="p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-6 max-w-6xl mx-auto">
 
       {/* Breadcrumb / Back */}
       <div className="flex items-center justify-between">
@@ -181,38 +181,38 @@ export default function Report() {
       </div>
 
       {/* KPI Summary Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-darkCard border border-zinc-800 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Potential Savings</span>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-darkCard border border-zinc-800 rounded-xl p-3.5 sm:p-5">
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3">
+            <span className="text-[10px] sm:text-xs font-medium text-zinc-500 uppercase tracking-wide">Potential Savings</span>
             <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
               <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-emerald-400">{formatCurrency(totalSavings)}</div>
-          <p className="text-[11px] text-zinc-600 mt-1">across remaining issues</p>
+          <div className="text-xl sm:text-2xl font-bold text-emerald-400">{formatCurrency(totalSavings)}</div>
+          <p className="text-[10px] sm:text-[11px] text-zinc-600 mt-1">across remaining issues</p>
         </div>
 
-        <div className="bg-darkCard border border-zinc-800 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Resources Scanned</span>
+        <div className="bg-darkCard border border-zinc-800 rounded-xl p-3.5 sm:p-5">
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3">
+            <span className="text-[10px] sm:text-xs font-medium text-zinc-500 uppercase tracking-wide">Resources Scanned</span>
             <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
               <Cpu className="w-3.5 h-3.5 text-indigo-400" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-white">{count}</div>
-          <p className="text-[11px] text-zinc-600 mt-1">EC2, EBS, RDS, S3</p>
+          <div className="text-xl sm:text-2xl font-bold text-white">{count}</div>
+          <p className="text-[10px] sm:text-[11px] text-zinc-600 mt-1">EC2, EBS, RDS, S3</p>
         </div>
 
-        <div className="bg-darkCard border border-zinc-800 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Open Issues</span>
+        <div className="bg-darkCard border border-zinc-800 rounded-xl p-3.5 sm:p-5">
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3">
+            <span className="text-[10px] sm:text-xs font-medium text-zinc-500 uppercase tracking-wide">Open Issues</span>
             <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
               <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-amber-400">{activeIssues}</div>
-          <p className="text-[11px] text-zinc-600 mt-1">
+          <div className="text-xl sm:text-2xl font-bold text-amber-400">{activeIssues}</div>
+          <p className="text-[10px] sm:text-[11px] text-zinc-600 mt-1">
             {localRecs.length - activeIssues} remediated
           </p>
         </div>

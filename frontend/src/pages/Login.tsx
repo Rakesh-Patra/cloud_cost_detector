@@ -92,13 +92,13 @@ export default function Login() {
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brandIndigo/10 rounded-full blur-3xl" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-brandPurple/10 rounded-full blur-3xl" />
 
-      <div className="w-full max-w-md bg-darkCard/50 backdrop-blur-xl border border-zinc-800/80 rounded-2xl p-8 relative z-10 shadow-2xl">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-brandIndigo/10 border border-brandIndigo/30 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-brandIndigo/5">
-            <Shield className="w-8 h-8 text-brandIndigo animate-pulse" />
+      <div className="w-full max-w-md bg-darkCard/50 backdrop-blur-xl border border-zinc-800/80 rounded-2xl p-5 sm:p-8 relative z-10 shadow-2xl">
+        <div className="flex flex-col items-center mb-6 sm:mb-8">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 bg-brandIndigo/10 border border-brandIndigo/30 rounded-2xl flex items-center justify-center mb-3 sm:mb-4 shadow-lg shadow-brandIndigo/5">
+            <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-brandIndigo animate-pulse" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">AI Cloud Cost Detective</h1>
-          <p className="text-zinc-400 text-sm mt-1">Sign in to scan and optimize your AWS cloud</p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white text-center">AI Cloud Cost Detective</h1>
+          <p className="text-zinc-400 text-xs sm:text-sm mt-1 text-center">Sign in to scan and optimize your AWS cloud</p>
         </div>
 
         {error && (

@@ -44,8 +44,20 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
 
   useEffect(() => {
-    const u = (insforge as any).tokenManager?.getUser();
-    setUserEmail(u?.email ?? '');
+    const fetchUser = async () => {
+      const u = (insforge as any).tokenManager?.getUser?.();
+      if (u?.email) {
+        setUserEmail(u.email);
+        return;
+      }
+      try {
+        const { data } = await insforge.auth.getCurrentUser();
+        if (data?.user?.email) {
+          setUserEmail(data.user.email);
+        }
+      } catch {}
+    };
+    fetchUser();
   }, []);
 
   const handleLogout = async () => {

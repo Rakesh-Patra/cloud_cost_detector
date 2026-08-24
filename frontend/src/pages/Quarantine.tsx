@@ -75,20 +75,20 @@ export const Quarantine: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="p-3.5 sm:p-5 md:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-white flex items-center gap-2">
             <span>🛡️</span> Quarantine & Safe Actions
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Enterprise guardrail: Resources flagged for termination with 7-day grace periods and snapshot rollbacks.
           </p>
         </div>
         <button
           onClick={fetchItems}
-          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition"
+          className="self-start sm:self-auto px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition"
         >
           🔄 Refresh
         </button>

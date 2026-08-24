@@ -220,6 +220,20 @@ def init_db():
             );
             """)
             cursor.execute("""
+            CREATE TABLE IF NOT EXISTS analyses (
+                id VARCHAR(255) PRIMARY KEY,
+                user_id VARCHAR(255),
+                org_id VARCHAR(255),
+                region VARCHAR(100),
+                resources_scanned INTEGER DEFAULT 0,
+                issues_found INTEGER DEFAULT 0,
+                estimated_savings VARCHAR(100) DEFAULT '$0.00',
+                analysis_result TEXT,
+                status VARCHAR(50) DEFAULT 'running',
+                created_at VARCHAR(255)
+            );
+            """)
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS activity_audit_logs (
                 id VARCHAR(255) PRIMARY KEY,
                 timestamp VARCHAR(255) NOT NULL,
@@ -401,6 +415,20 @@ def init_db():
                 created_at TEXT
             )
             """)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS analyses (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                org_id TEXT,
+                region TEXT,
+                resources_scanned INTEGER DEFAULT 0,
+                issues_found INTEGER DEFAULT 0,
+                estimated_savings TEXT DEFAULT '$0.00',
+                analysis_result TEXT,
+                status TEXT DEFAULT 'running',
+                created_at TEXT
+            )
+            """)
         
         conn.commit()
         conn.close()
@@ -560,6 +588,192 @@ def save_alert_log(user_id: str, alert_id: str, date: str, details: dict, status
     except Exception as e:
         logger.error(f"Error saving alert log for user {user_id}: {str(e)}")
         raise e
+
+# --- Multi-Tenant Analysis Audits Management ---
+
+def save_analysis_db(analysis_id: str, region: str, user_id: str = None, org_id: str = None, status: str = "running") -> None:
+    """Creates an initial analysis record in local DB."""
+    try:
+        conn, db_type = get_connection()
+        cursor = conn.cursor()
+        now_str = datetime.now(timezone.utc).isoformat()
+        
+        if db_type == "postgres":
+            query = """
+            INSERT INTO analyses (id, user_id, org_id, region, resources_scanned, issues_found, estimated_savings, status, created_at)
+            VALUES (%s, %s, %s, %s, 0, 0, '$0.00', %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                user_id = COALESCE(EXCLUDED.user_id, analyses.user_id),
+                org_id = COALESCE(EXCLUDED.org_id, analyses.org_id),
+                region = EXCLUDED.region,
+                status = EXCLUDED.status
+            """
+        else:
+            query = """
+            INSERT INTO analyses (id, user_id, org_id, region, resources_scanned, issues_found, estimated_savings, status, created_at)
+            VALUES (?, ?, ?, ?, 0, 0, '$0.00', ?, ?)
+            ON CONFLICT (id) DO UPDATE SET
+                user_id = COALESCE(excluded.user_id, analyses.user_id),
+                org_id = COALESCE(excluded.org_id, analyses.org_id),
+                region = excluded.region,
+                status = excluded.status
+            """
+        cursor.execute(query, (analysis_id, user_id, org_id, region, status, now_str))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error saving analysis {analysis_id} to local DB: {e}")
+
+def update_analysis_success_db(analysis_id: str, resources_scanned: int, issues_found: int, estimated_savings: str, analysis_result: dict) -> None:
+    """Updates an analysis record to completed with findings in local DB."""
+    try:
+        conn, db_type = get_connection()
+        cursor = conn.cursor()
+        param_placeholder = "%s" if db_type == "postgres" else "?"
+        res_str = json.dumps(analysis_result) if isinstance(analysis_result, dict) else str(analysis_result)
+        
+        query = f"""
+        UPDATE analyses
+        SET resources_scanned = {param_placeholder},
+            issues_found = {param_placeholder},
+            estimated_savings = {param_placeholder},
+            analysis_result = {param_placeholder},
+            status = 'completed'
+        WHERE id = {param_placeholder}
+        """
+        cursor.execute(query, (resources_scanned, issues_found, estimated_savings, res_str, analysis_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error updating analysis {analysis_id} in local DB: {e}")
+
+def update_analysis_failure_db(analysis_id: str) -> None:
+    """Marks an analysis as failed in local DB."""
+    try:
+        conn, db_type = get_connection()
+        cursor = conn.cursor()
+        param_placeholder = "%s" if db_type == "postgres" else "?"
+        query = f"UPDATE analyses SET status = 'failed' WHERE id = {param_placeholder}"
+        cursor.execute(query, (analysis_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error marking analysis {analysis_id} failed in local DB: {e}")
+
+def update_analysis_result_db(analysis_id: str, analysis_result: dict) -> None:
+    """Updates only analysis_result field in local DB."""
+    try:
+        conn, db_type = get_connection()
+        cursor = conn.cursor()
+        param_placeholder = "%s" if db_type == "postgres" else "?"
+        res_str = json.dumps(analysis_result) if isinstance(analysis_result, dict) else str(analysis_result)
+        query = f"UPDATE analyses SET analysis_result = {param_placeholder} WHERE id = {param_placeholder}"
+        cursor.execute(query, (res_str, analysis_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error updating analysis result for {analysis_id} in local DB: {e}")
+
+def get_analysis_history_db(user_id: str = None, org_id: str = None) -> list:
+    """Retrieve audit history from local DB, strictly filtered by user_id or org_id, sorted by created_at DESC."""
+    try:
+        conn, db_type = get_connection()
+        cursor = conn.cursor()
+        param_placeholder = "%s" if db_type == "postgres" else "?"
+        
+        where_clauses = []
+        params = []
+        if user_id:
+            where_clauses.append(f"(user_id = {param_placeholder})")
+            params.append(user_id)
+        elif org_id:
+            where_clauses.append(f"(org_id = {param_placeholder})")
+            params.append(org_id)
+            
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        query = f"""
+        SELECT id, region, resources_scanned, issues_found, estimated_savings, analysis_result, status, created_at, user_id, org_id
+        FROM analyses
+        {where_sql}
+        ORDER BY created_at DESC
+        """
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        results = []
+        for r in rows:
+            res_json = r[5]
+            if isinstance(res_json, str):
+                try:
+                    res_json = json.loads(res_json)
+                except Exception:
+                    pass
+            results.append({
+                "id": r[0],
+                "region": r[1],
+                "resources_scanned": r[2] or 0,
+                "issues_found": r[3] or 0,
+                "estimated_savings": r[4] or "$0.00",
+                "analysis_result": res_json,
+                "status": r[6],
+                "created_at": r[7],
+                "user_id": r[8],
+                "org_id": r[9]
+            })
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching analysis history from local DB: {e}")
+        return []
+
+def get_analysis_db(analysis_id: str, user_id: str = None, org_id: str = None) -> dict | None:
+    """Retrieve a specific analysis record from local DB with optional tenant ownership verification."""
+    try:
+        conn, db_type = get_connection()
+        cursor = conn.cursor()
+        param_placeholder = "%s" if db_type == "postgres" else "?"
+        
+        where_clauses = [f"id = {param_placeholder}"]
+        params = [analysis_id]
+        if user_id:
+            where_clauses.append(f"(user_id = {param_placeholder} OR user_id IS NULL)")
+            params.append(user_id)
+        elif org_id:
+            where_clauses.append(f"(org_id = {param_placeholder} OR org_id IS NULL)")
+            params.append(org_id)
+            
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
+        query = f"""
+        SELECT id, region, resources_scanned, issues_found, estimated_savings, analysis_result, status, created_at, user_id, org_id
+        FROM analyses
+        {where_sql}
+        """
+        cursor.execute(query, tuple(params))
+        r = cursor.fetchone()
+        conn.close()
+        if not r:
+            return None
+        res_json = r[5]
+        if isinstance(res_json, str):
+            try:
+                res_json = json.loads(res_json)
+            except Exception:
+                pass
+        return {
+            "id": r[0],
+            "region": r[1],
+            "resources_scanned": r[2] or 0,
+            "issues_found": r[3] or 0,
+            "estimated_savings": r[4] or "$0.00",
+            "analysis_result": res_json,
+            "status": r[6],
+            "created_at": r[7],
+            "user_id": r[8],
+            "org_id": r[9]
+        }
+    except Exception as e:
+        logger.error(f"Error fetching analysis {analysis_id} from local DB: {e}")
+        return None
 
 # --- Multi-Tenant Cloud Accounts Management ---
 
@@ -986,8 +1200,8 @@ def check_and_bind_account(org_id: str, user_id: str, user_role: str, account_al
 # --- Section 4: Identity, Domain Verification & Role Promotion ---
 # =====================================================================
 
-def get_or_create_user_profile(user_id: str, email: str, org_id: str = None, default_role: str = "finops") -> dict:
-    """Retrieves or initializes a database-backed user profile with lowest privilege default."""
+def get_or_create_user_profile(user_id: str, email: str, org_id: str = None, default_role: str = "admin") -> dict:
+    """Retrieves or initializes a database-backed user profile with admin default."""
     try:
         conn, db_type = get_connection()
         cursor = conn.cursor()
@@ -1000,12 +1214,19 @@ def get_or_create_user_profile(user_id: str, email: str, org_id: str = None, def
         now_str = datetime.now(timezone.utc).isoformat()
 
         if row:
+            # Upgrade existing profile to admin
+            if row[3] != "admin":
+                cursor.execute(
+                    f"UPDATE user_profiles SET role = 'admin' WHERE user_id = {param_placeholder}",
+                    (user_id,)
+                )
+                conn.commit()
             conn.close()
             return {
                 "user_id": row[0],
                 "email": row[1],
                 "org_id": row[2],
-                "role": row[3],
+                "role": "admin",
                 "status": row[4],
                 "domain_verified": bool(row[5]),
                 "created_at": row[6],

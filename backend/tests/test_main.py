@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock
 from fastapi import status
+import database
 
 # Test regions endpoint with active authentication dependency override (fixture client)
 def test_get_regions_authenticated(client):
@@ -96,7 +97,7 @@ def test_get_history(mock_db_client, client):
     response = client.get("/api/history")
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == mock_history
-    mock_db_client.get_analysis_history.assert_called_once_with(token="mock-jwt-token")
+    mock_db_client.get_analysis_history.assert_called_once_with(user_id="test-user-id", org_id="test-user-id", token="mock-jwt-token")
 
 @patch("main.db_client")
 @patch("main.scan_all_resources")
@@ -127,7 +128,7 @@ def test_analyze_region(mock_broadcast, mock_analyze_costs, mock_scan, mock_db_c
     assert data["count"] == 1
     
     # Verify sequence of database writes and progress broadcasts
-    mock_db_client.create_analysis.assert_called_once_with("ana-123", "us-east-1", token="mock-jwt-token")
+    mock_db_client.create_analysis.assert_called_once_with("ana-123", "us-east-1", user_id="test-user-id", org_id="test-user-id", token="mock-jwt-token")
     mock_scan.assert_called_once_with("us-east-1")
     mock_analyze_costs.assert_called_once()
     mock_db_client.update_analysis_success.assert_called_once()
@@ -164,7 +165,7 @@ def test_remediate_resource_success(mock_remediate, mock_db_client, client):
     assert data["resource_id"] == "vol-123"
     
     mock_remediate.assert_called_once_with("us-east-1", "vol-123", "Unattached EBS Volume")
-    mock_db_client.get_analysis.assert_called_once_with("ana-1", token="mock-jwt-token")
+    mock_db_client.get_analysis.assert_called_once_with("ana-1", user_id="test-user-id", org_id="test-user-id", token="mock-jwt-token")
     mock_db_client.update_analysis_result.assert_called_once()
 
 @patch("main.db_client")
@@ -304,3 +305,43 @@ def test_rbac_production_fail_safe_defaults_to_viewer(monkeypatch):
         assert rem_resp.status_code == status.HTTP_403_FORBIDDEN
         
     app.dependency_overrides.clear()
+
+def test_user_history_isolation_in_database():
+    """Verify that local database strictly isolates audit history between users."""
+    database.save_analysis_db("ana-user-a-1", "us-east-1", user_id="user-a", org_id="org-a", status="completed")
+    database.update_analysis_success_db(
+        "ana-user-a-1", resources_scanned=10, issues_found=2, estimated_savings="$50.00",
+        analysis_result={"recommendations": [{"id": "rec-1"}]}
+    )
+    
+    database.save_analysis_db("ana-user-b-1", "eu-west-1", user_id="user-b", org_id="org-b", status="completed")
+    database.update_analysis_success_db(
+        "ana-user-b-1", resources_scanned=5, issues_found=1, estimated_savings="$20.00",
+        analysis_result={"recommendations": [{"id": "rec-2"}]}
+    )
+    
+    # User A gets only their scan
+    history_a = database.get_analysis_history_db(user_id="user-a")
+    assert len(history_a) == 1
+    assert history_a[0]["id"] == "ana-user-a-1"
+    assert history_a[0]["region"] == "us-east-1"
+    
+    # User B gets only their scan
+    history_b = database.get_analysis_history_db(user_id="user-b")
+    assert len(history_b) == 1
+    assert history_b[0]["id"] == "ana-user-b-1"
+    assert history_b[0]["region"] == "eu-west-1"
+    
+    # User C (brand new user) gets 0 scans, never user A or B's scans
+    history_c = database.get_analysis_history_db(user_id="user-c")
+    assert history_c == []
+
+@pytest.mark.asyncio
+async def test_insforge_history_empty_never_leaks_other_users():
+    """Verify that InsForge client returning 0 records for a user never falls back to unauthenticated global queries."""
+    from insforge_client import InsForgeClient
+    client = InsForgeClient()
+    
+    # When user has 0 records, get_analysis_history must return empty list, not leak other users
+    res = await client.get_analysis_history(user_id="brand-new-user", org_id="org-brand-new", token="valid-user-jwt")
+    assert res == []

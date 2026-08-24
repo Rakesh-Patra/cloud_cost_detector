@@ -62,17 +62,50 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const resolveSession = () => {
-      const currentUser = (insforge as any).tokenManager.getUser();
-      setUser(currentUser ?? null);
-      setLoading(false);
+    let isMounted = true;
+
+    const resolveSession = async () => {
+      // 1. Check in-memory user first
+      const memUser = (insforge as any).tokenManager?.getUser?.();
+      if (memUser) {
+        if (isMounted) {
+          setUser(memUser);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // 2. Asynchronously verify / refresh session via SDK (reads refresh cookie/token)
+      try {
+        const { data, error } = await insforge.auth.getCurrentUser();
+        if (isMounted) {
+          if (data?.user && !error) {
+            setUser(data.user);
+          } else {
+            setUser(null);
+          }
+        }
+      } catch {
+        if (isMounted) setUser(null);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     };
 
     resolveSession();
-    (insforge as any).tokenManager.onTokenChange = resolveSession;
+
+    if ((insforge as any).tokenManager) {
+      (insforge as any).tokenManager.onTokenChange = () => {
+        const currentUser = (insforge as any).tokenManager?.getUser?.();
+        setUser(currentUser ?? null);
+      };
+    }
 
     return () => {
-      (insforge as any).tokenManager.onTokenChange = null;
+      isMounted = false;
+      if ((insforge as any).tokenManager) {
+        (insforge as any).tokenManager.onTokenChange = null;
+      }
     };
   }, []);
 

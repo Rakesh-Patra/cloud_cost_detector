@@ -23,16 +23,16 @@ interface CardHeaderProps {
 
 export function CardHeader({ title, description, icon, action }: CardHeaderProps) {
   return (
-    <div className="flex items-start justify-between gap-4 p-5 border-b border-zinc-800">
-      <div className="flex items-center gap-3 min-w-0">
+    <div className="flex items-start justify-between gap-3 sm:gap-4 p-3.5 sm:p-5 border-b border-zinc-800">
+      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
         {icon && (
-          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+          <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
             {icon}
           </div>
         )}
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-white truncate">{title}</h3>
-          {description && <p className="text-xs text-zinc-500 mt-0.5 truncate">{description}</p>}
+          <h3 className="text-xs sm:text-sm font-semibold text-white truncate">{title}</h3>
+          {description && <p className="text-[11px] sm:text-xs text-zinc-500 mt-0.5 truncate">{description}</p>}
         </div>
       </div>
       {action && <div className="flex-shrink-0">{action}</div>}
@@ -41,5 +41,5 @@ export function CardHeader({ title, description, icon, action }: CardHeaderProps
 }
 
 export function CardContent({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`p-5 ${className}`}>{children}</div>;
+  return <div className={`p-3.5 sm:p-5 ${className}`}>{children}</div>;
 }

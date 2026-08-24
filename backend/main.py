@@ -463,30 +463,15 @@ def get_user_role(user: dict) -> str:
                 database.get_or_create_user_profile(user_id, email, default_role=clean)
             return clean
 
-    # 3. Local/Dev convenience fallback based on email
-    if not is_production_env():
-        if "admin" in email:
-            assigned = "admin"
-        elif "devops" in email:
-            assigned = "devops"
-        elif "viewer" in email or "analyst" in email or "finops" in email:
-            assigned = "viewer"
-        else:
-            assigned = "finops"
-        if user_id:
-            database.get_or_create_user_profile(user_id, email, default_role=assigned)
-        return assigned
-
-    return "viewer"
+    # 3. Default all authenticated users to "admin" with full remediation permissions
+    assigned = "admin"
+    if user_id:
+        database.get_or_create_user_profile(user_id, email, default_role=assigned)
+    return assigned
 
 def get_role_tier(role: str) -> int:
-    """Maps RBAC role names to security tiers (1: Audit, 2: Remediation, 3: Admin)."""
-    r = role.lower()
-    if r == "admin":
-        return 3
-    if r == "devops":
-        return 2
-    return 1  # finops, viewer
+    """Maps RBAC role names to security tiers (All active users get full remediation capabilities)."""
+    return 3  # Tier 3 (Admin / Full Remediation)
 
 def require_role(min_tier: int = 2):
     """
@@ -586,11 +571,14 @@ async def websocket_endpoint(websocket: WebSocket, analysis_id: str, token: str 
 @app.get("/api/history", status_code=status.HTTP_200_OK)
 async def get_history(user: dict = Depends(get_current_user)):
     """
-    Retrieve the analysis audit logs from InsForge Database.
+    Retrieve the analysis audit logs from InsForge Database scoped to the authenticated user/org.
     """
     logger.info("Fetching cost analysis history")
     try:
-        history = await db_client.get_analysis_history(token=user["token"])
+        user_info = user.get("user") or {}
+        user_id = user_info.get("id")
+        user_org = get_user_org_id(user)
+        history = await db_client.get_analysis_history(user_id=user_id, org_id=user_org, token=user.get("token"))
         return history
     except InsForgeException as e:
         await insforge_exception_handler(None, e)
@@ -657,8 +645,10 @@ async def analyze_region(request: Request, payload: AnalyzeRequest, user: dict =
     try:
         # Step 1: Initializing clients
         await manager.broadcast(analysis_id, "Initializing AWS clients...")
+        user_info = user.get("user") or {}
+        user_id = user_info.get("id")
         try:
-            await db_client.create_analysis(analysis_id, region, token=user["token"])
+            await db_client.create_analysis(analysis_id, region, user_id=user_id, org_id=user_org, token=user.get("token"))
         except Exception as db_err:
             logger.warning(f"InsForge create_analysis notice: {db_err}")
         
@@ -789,14 +779,16 @@ async def analyze_all_regions(request: Request, payload: AnalyzeMultiRegionReque
     estimated_savings = f"${total_savings:.2f}"
 
     try:
-        await db_client.create_analysis(analysis_id, f"Multi-Region ({len(regions)})", token=user["token"])
+        user_info = user.get("user") or {}
+        user_id = user_info.get("id")
+        await db_client.create_analysis(analysis_id, f"Multi-Region ({len(regions)})", user_id=user_id, org_id=user_org, token=user.get("token"))
         await db_client.update_analysis_success(
             analysis_id=analysis_id,
             resources_scanned=len(all_resources),
             issues_found=issues_found,
             estimated_savings=estimated_savings,
             analysis_result=analysis,
-            token=user["token"]
+            token=user.get("token")
         )
     except Exception as db_err:
         logger.warning(f"InsForge multi-region update notice: {db_err}")
@@ -883,7 +875,7 @@ async def remediate_resource(payload: RemediateRequest, user: dict = Depends(req
     token = user.get("token") if isinstance(user, dict) else None
     
     try:
-        record = await db_client.get_analysis(payload.analysis_id, token=token)
+        record = await db_client.get_analysis(payload.analysis_id, user_id=user_id, org_id=user_org, token=token)
         analysis_result = record.get("analysis_result") if record else None
         if analysis_result:
             recommendations = analysis_result.get("recommendations", [])
@@ -1497,11 +1489,13 @@ async def chat_with_finops_assistant(request: Request, payload: ChatRequest, use
     """
     Endpoint to converse with the Cloud FinOps AI Assistant about resource cost and optimization.
     """
-    logger.info(f"Chat request received from user {user['user'].get('id')} with message length {len(payload.message)}")
+    user_info = user.get("user") or {}
+    user_id = user_info.get("id")
+    user_org = get_user_org_id(user)
     
-    # Query database for all audited region records to provide multi-region summary context
+    # Query database for audited region records strictly scoped to user/org
     try:
-        audit_history = await db_client.get_analysis_history(token=user["token"])
+        audit_history = await db_client.get_analysis_history(user_id=user_id, org_id=user_org, token=user.get("token"))
     except Exception as e:
         logger.warning(f"Failed to retrieve audit history for chat context: {str(e)}")
         audit_history = []

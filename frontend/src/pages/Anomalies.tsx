@@ -89,26 +89,26 @@ export default function Anomalies() {
   ];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-3.5 sm:p-5 md:p-6 max-w-6xl mx-auto space-y-4 sm:space-y-6">
 
       {/* Summary KPI row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
         {(['critical', 'high', 'medium', 'low'] as Severity[]).map(sev => (
           <div
             key={sev}
-            className={`bg-darkCard border rounded-xl p-4 cursor-pointer transition-all ${
+            className={`bg-darkCard border rounded-xl p-3 sm:p-4 cursor-pointer transition-all ${
               filter === sev ? 'ring-1 ring-indigo-500/50 border-indigo-500/30' : 'border-zinc-800 hover:border-zinc-700'
             }`}
             onClick={() => setFilter(f => f === sev ? 'all' : sev)}
           >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 capitalize mb-2">{sev}</p>
-            <p className={`text-2xl font-bold ${
+            <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-zinc-500 capitalize mb-1.5 sm:mb-2">{sev}</p>
+            <p className={`text-xl sm:text-2xl font-bold ${
               sev === 'critical' ? 'text-red-400'
               : sev === 'high' ? 'text-orange-400'
               : sev === 'medium' ? 'text-amber-400'
               : 'text-zinc-400'
             }`}>{counts[sev]}</p>
-            <p className="text-[11px] text-zinc-600 mt-1">anomalies</p>
+            <p className="text-[10px] sm:text-[11px] text-zinc-600 mt-1">anomalies</p>
           </div>
         ))}
       </div>

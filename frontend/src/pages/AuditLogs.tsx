@@ -123,50 +123,50 @@ export const AuditLogs: React.FC = () => {
   );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-3.5 sm:p-5 md:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldAlert className="h-7 w-7 text-indigo-400" />
-            <h1 className="text-2xl font-bold text-slate-100">Security, RBAC & Audit Trail</h1>
+            <ShieldAlert className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-indigo-400 shrink-0" />
+            <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-100">Security, RBAC & Audit Trail</h1>
           </div>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Immutable activity ledger, dual-control approvals, and least-privilege role management.
           </p>
         </div>
         <button
           onClick={fetchData}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm border border-slate-700 transition"
+          className="self-start md:self-auto flex items-center gap-2 px-3 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs sm:text-sm border border-slate-700 transition"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-800 gap-2 overflow-x-auto">
+      <div className="flex border-b border-slate-800 gap-1.5 sm:gap-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab('activity')}
-          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition whitespace-nowrap ${
             activeTab === 'activity'
               ? 'border-indigo-500 text-indigo-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <History className="h-4 w-4" />
+          <History className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           Activity Audit Trail ({activityLogs.length})
         </button>
         <button
           onClick={() => setActiveTab('approvals')}
-          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition whitespace-nowrap ${
             activeTab === 'approvals'
               ? 'border-amber-500 text-amber-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Clock className="h-4 w-4" />
+          <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           Dual-Control Approvals ({approvals.filter((a) => a.status === 'pending').length} Pending)
         </button>
         {viewerRole === 'admin' && (

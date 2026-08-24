@@ -218,10 +218,10 @@ export default function Dashboard({ scanMode: _scanMode }: DashboardProps) {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
 
       {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <KpiCard
           label="Total Scans"
           value={loadingHistory ? '—' : history.length}
@@ -254,7 +254,7 @@ export default function Dashboard({ scanMode: _scanMode }: DashboardProps) {
       </div>
 
       {/* Main grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 sm:gap-6">
 
         {/* Scan Launcher */}
         <div className="xl:col-span-3">

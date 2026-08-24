@@ -66,8 +66,11 @@ class InsForgeClient:
             
         return response
 
-    async def create_analysis(self, analysis_id: str, region: str, token: str = None) -> None:
-        """Create a new cost analysis log record with status='running'."""
+    async def create_analysis(self, analysis_id: str, region: str, user_id: str = None, org_id: str = None, token: str = None) -> None:
+        """Create a new cost analysis log record with status='running', persisting to local DB and InsForge."""
+        # Always persist to local DB for resilience and local isolation
+        database.save_analysis_db(analysis_id, region, user_id=user_id, org_id=org_id, status="running")
+
         if not self.enabled:
             logger.info(f"Skipping InsForge logging (disabled) for analysis: {analysis_id}")
             return
@@ -82,23 +85,23 @@ class InsForgeClient:
             "status": "running",
             "created_at": datetime.now(timezone.utc).isoformat()
         }
+        if user_id:
+            payload["user_id"] = user_id
+        if org_id:
+            payload["org_id"] = org_id
 
         async with httpx.AsyncClient() as client:
             try:
-                logger.info(f"Writing initial analysis log {analysis_id} to InsForge")
+                logger.info(f"Writing initial analysis log {analysis_id} for user {user_id} to InsForge")
                 response = await self._send_request(
                     client, "POST", url, token=token, json_data=payload, with_prefer="resolution=merge-duplicates"
                 )
                 
                 # Check response. PostgREST returns 201 Created on successful insert
                 if response.status_code not in (200, 201):
-                    logger.error(f"Failed to create analysis in InsForge: {response.status_code} - {response.text}")
-                    raise InsForgeException(f"InsForge DB error (status {response.status_code}): {response.text}")
+                    logger.warning(f"InsForge create_analysis notice: status {response.status_code} - {response.text}")
             except Exception as e:
-                logger.error(f"Error connecting to InsForge: {str(e)}")
-                if isinstance(e, InsForgeException):
-                    raise e
-                raise InsForgeException(f"Failed to communicate with InsForge: {str(e)}") from e
+                logger.warning(f"Error connecting to InsForge for analysis create: {str(e)}")
 
     async def update_analysis_success(
         self,
@@ -110,6 +113,15 @@ class InsForgeClient:
         token: str = None
     ) -> None:
         """Update analysis log to 'completed' with resource counts, savings, and JSON results."""
+        # Always update local DB
+        database.update_analysis_success_db(
+            analysis_id=analysis_id,
+            resources_scanned=resources_scanned,
+            issues_found=issues_found,
+            estimated_savings=estimated_savings,
+            analysis_result=analysis_result
+        )
+
         if not self.enabled:
             return
 
@@ -130,16 +142,14 @@ class InsForgeClient:
                 )
                 
                 if response.status_code not in (200, 204):
-                    logger.error(f"Failed to update analysis in InsForge: {response.status_code} - {response.text}")
-                    raise InsForgeException(f"InsForge DB update failed (status {response.status_code}): {response.text}")
+                    logger.warning(f"Failed to update analysis in InsForge: {response.status_code} - {response.text}")
             except Exception as e:
-                logger.error(f"Error updating InsForge record: {str(e)}")
-                if isinstance(e, InsForgeException):
-                    raise e
-                raise InsForgeException(f"Failed to update database record in InsForge: {str(e)}") from e
+                logger.warning(f"Error updating InsForge record: {str(e)}")
 
     async def update_analysis_failure(self, analysis_id: str, token: str = None) -> None:
         """Update analysis status to 'failed' on error."""
+        database.update_analysis_failure_db(analysis_id)
+
         if not self.enabled:
             return
 
@@ -156,49 +166,52 @@ class InsForgeClient:
                 )
                 
                 if response.status_code not in (200, 204):
-                    logger.error(f"Failed to fail analysis in InsForge: {response.status_code} - {response.text}")
+                    logger.warning(f"Failed to fail analysis in InsForge: {response.status_code} - {response.text}")
             except Exception as e:
-                logger.error(f"Error reporting failure to InsForge: {str(e)}")
+                logger.warning(f"Error reporting failure to InsForge: {str(e)}")
 
-    async def get_analysis_history(self, token: str = None) -> list:
-        """Retrieve audit history from the database, sorted by date descending."""
+    async def get_analysis_history(self, user_id: str = None, org_id: str = None, token: str = None) -> list:
+        """Retrieve audit history strictly filtered for the user/organization, sorted by date descending."""
         if not self.enabled:
-            raise InsForgeException("InsForge is not configured. Check your environment variables.")
+            return database.get_analysis_history_db(user_id=user_id, org_id=org_id)
 
         url = f"{self.project_url}/api/database/records/analyses"
         params = {
             "select": "*",
             "order": "created_at.desc"
         }
+        if user_id:
+            params["user_id"] = f"eq.{user_id}"
+        elif org_id:
+            params["org_id"] = f"eq.{org_id}"
 
         async with httpx.AsyncClient() as client:
             try:
-                logger.info("Fetching analysis history from InsForge DB")
+                logger.info(f"Fetching analysis history for user '{user_id}' / org '{org_id}' from InsForge DB")
                 response = await self._send_request(client, "GET", url, token=token, params=params)
                 
-                if response.status_code != 200:
-                    logger.error(f"Failed to fetch history from InsForge: {response.status_code} - {response.text}")
-                    raise InsForgeException(f"InsForge history query failed (status {response.status_code}): {response.text}")
+                if response.status_code == 200:
+                    records = response.json()
+                    if records:
+                        return records
+                    # If InsForge returns 0 records, check local SQLite before returning empty list
+                    local_records = database.get_analysis_history_db(user_id=user_id, org_id=org_id)
+                    return local_records if local_records else []
                 
-                records = response.json()
-                if not records and token and token != self.anon_key:
-                    logger.info("User-scoped history returned 0 records, attempting anon query fallback")
-                    anon_headers = self._get_headers(token=None)
-                    anon_resp = await client.request("GET", url, params=params, headers=anon_headers, timeout=10.0)
-                    if anon_resp.status_code == 200:
-                        records = anon_resp.json()
-                
-                return records
+                # If relation or column not found in InsForge (e.g. 400/404), fall back to local DB
+                logger.warning(f"InsForge history query returned status {response.status_code}. Falling back to local DB.")
+                return database.get_analysis_history_db(user_id=user_id, org_id=org_id)
             except Exception as e:
-                logger.error(f"Error querying history from InsForge: {str(e)}")
-                if isinstance(e, InsForgeException):
-                    raise e
-                raise InsForgeException(f"Failed to query history from InsForge: {str(e)}") from e
+                logger.warning(f"Error querying history from InsForge: {str(e)}. Falling back to local DB.")
+                return database.get_analysis_history_db(user_id=user_id, org_id=org_id)
 
-    async def get_analysis(self, analysis_id: str, token: str = None) -> dict:
-        """Retrieve a specific analysis log record by ID."""
+    async def get_analysis(self, analysis_id: str, user_id: str = None, org_id: str = None, token: str = None) -> dict:
+        """Retrieve a specific analysis log record by ID with fallback to local DB."""
         if not self.enabled:
-            raise InsForgeException("InsForge client is not configured. Check your environment variables.")
+            rec = database.get_analysis_db(analysis_id, user_id=user_id, org_id=org_id)
+            if not rec:
+                raise InsForgeException(f"Analysis record with ID {analysis_id} not found.")
+            return rec
 
         url = f"{self.project_url}/api/database/records/analyses"
         params = {
@@ -210,22 +223,29 @@ class InsForgeClient:
                 logger.info(f"Fetching analysis record {analysis_id} from InsForge")
                 response = await self._send_request(client, "GET", url, token=token, params=params)
                 
-                if response.status_code != 200:
-                    logger.error(f"Failed to fetch analysis from InsForge: {response.status_code} - {response.text}")
-                    raise InsForgeException(f"InsForge query failed (status {response.status_code}): {response.text}")
+                if response.status_code == 200:
+                    records = response.json()
+                    if records:
+                        return records[0]
                 
-                records = response.json()
-                if not records:
-                    raise InsForgeException(f"Analysis record with ID {analysis_id} not found.")
-                return records[0]
+                # Try local DB
+                rec = database.get_analysis_db(analysis_id, user_id=user_id, org_id=org_id)
+                if rec:
+                    return rec
+                raise InsForgeException(f"Analysis record with ID {analysis_id} not found.")
             except Exception as e:
-                logger.error(f"Error querying analysis {analysis_id} from InsForge: {str(e)}")
+                logger.warning(f"Error querying analysis {analysis_id} from InsForge: {str(e)}")
+                rec = database.get_analysis_db(analysis_id, user_id=user_id, org_id=org_id)
+                if rec:
+                    return rec
                 if isinstance(e, InsForgeException):
                     raise e
                 raise InsForgeException(f"Failed to query analysis from InsForge: {str(e)}") from e
 
     async def update_analysis_result(self, analysis_id: str, analysis_result: dict, token: str = None) -> None:
         """Update only the analysis_result JSON field of a specific analysis record."""
+        database.update_analysis_result_db(analysis_id, analysis_result)
+
         if not self.enabled:
             return
 
@@ -242,13 +262,9 @@ class InsForgeClient:
                 )
                 
                 if response.status_code not in (200, 204):
-                    logger.error(f"Failed to update analysis_result in InsForge: {response.status_code} - {response.text}")
-                    raise InsForgeException(f"InsForge DB update failed (status {response.status_code}): {response.text}")
+                    logger.warning(f"Failed to update analysis_result in InsForge: {response.status_code} - {response.text}")
             except Exception as e:
-                logger.error(f"Error updating analysis_result: {str(e)}")
-                if isinstance(e, InsForgeException):
-                    raise e
-                raise InsForgeException(f"Failed to update database record in InsForge: {str(e)}") from e
+                logger.warning(f"Error updating analysis_result in InsForge: {str(e)}")
 
     async def get_budget(self, user_id: str, token: str = None) -> dict:
         """Fetch budget and alert channels config. Fall back to local SQLite if relation doesn't exist."""

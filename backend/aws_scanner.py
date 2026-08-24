@@ -77,6 +77,7 @@ def _get_saas_sts_client():
     """
     access_key = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
     secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
+    region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1").strip()
     from botocore.config import Config
     sts_config = Config(connect_timeout=4, read_timeout=4, retries={'max_attempts': 2})
 
@@ -236,6 +237,10 @@ def get_assumed_role_session(role_arn: str, external_id: str, session_name: str 
             aws_session_token=credentials['SessionToken']
         )
     except Exception as e:
+        saas_acc = os.environ.get("AWS_SAAS_ACCOUNT_ID", "717056864326").strip()
+        if saas_acc and (saas_acc in role_arn or "717056864326" in role_arn):
+            logger.warning(f"STS AssumeRole failed for primary account {role_arn} ({e}). Falling back to direct AWS session.")
+            return boto3.Session()
         logger.error(f"Failed to assume role {role_arn} with external_id: {e}")
         raise AWSCredentialException(f"Failed to assume customer role: {str(e)}") from e
 

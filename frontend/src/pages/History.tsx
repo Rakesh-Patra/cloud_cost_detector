@@ -61,7 +61,7 @@ export default function History() {
   );
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-3.5 sm:p-5 md:p-6 max-w-5xl mx-auto space-y-4 sm:space-y-6">
       <Card>
         <CardHeader
           title="Audit History"
